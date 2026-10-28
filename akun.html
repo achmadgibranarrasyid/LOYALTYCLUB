@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kartu Member — BrewClub</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="index.html" class="logo"><span class="logo-mark">☕</span> BrewClub</a>
+    <div class="nav-links">
+      <a href="index.html">Beranda</a>
+    </div>
+    <div class="nav-actions">
+      <a href="index.html" class="btn btn-ghost">Lihat Promo</a>
+      <button class="btn btn-ghost danger" onclick="logoutUser()">Keluar</button>
+    </div>
+  </div>
+</nav>
+
+<div class="page-wrapper">
+  <div class="akun-box">
+    <!-- Kartu Digital -->
+    <div class="mcard">
+      <div class="mcard-top">
+        <span class="brand">BrewClub</span>
+        <span class="tier-pill" style="background:var(--gold); color:#2A1D15;">MEMBER AKTIF</span>
+      </div>
+      <div class="mcard-mid">
+        <canvas id="qrCanvas" width="200" height="200"></canvas>
+        <div>
+          <small>MEMBER</small>
+          <strong id="mName">—</strong>
+          <small>ID MEMBER</small>
+          <span id="mId">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panduan -->
+    <div class="info-box">
+      <h4>Panduan Klaim Promo</h4>
+      <p>Tunjukkan QR Code di atas ke kasir atau barista untuk mengklaim diskon dan bundling berikut:</p>
+      <ul>
+        <li>Diskon 20% Semua Pastry</li>
+        <li>Diskon 15% Signature Latte</li>
+        <li>Diskon 50% Kopi Kedua (Jumat)</li>
+        <li>Harga Spesial Paket Bundling</li>
+      </ul>
+    </div>
+
+    <div class="info-box" style="background:var(--accent-soft); border-color:transparent;">
+      <h4 style="color:var(--ink);">Butuh bantuan?</h4>
+      <p>Jika QR Code tidak terbaca, sebutkan <strong>ID Member</strong> kamu ke kasir untuk proses klaim manual.</p>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="app.js"></script>
+<script>
+  // Cek Autentikasi saat halaman dimuat
+  const currentUser = getUser();
+  
+  if (!currentUser) {
+    // Jika belum login, tendang ke halaman login
+    window.location.href = 'login.html';
+  } else {
+    // Tampilkan data user
+    document.getElementById('mName').textContent = currentUser.name;
+    document.getElementById('mId').textContent = 'ID · ' + currentUser.id;
+    
+    // Render QR Code unik berdasarkan ID dan Email
+    drawQR(document.getElementById('qrCanvas'), currentUser.id + currentUser.email);
+  }
+</script>
+</body>
+</html>

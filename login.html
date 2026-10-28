@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Masuk / Daftar — BrewClub</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="index.html" class="logo"><span class="logo-mark">☕</span> BrewClub</a>
+    <div class="nav-actions">
+      <a href="index.html" class="btn btn-ghost">Kembali ke Beranda</a>
+    </div>
+  </div>
+</nav>
+
+<div class="page-wrapper">
+  <div class="auth-box">
+    <div class="tabs">
+      <button class="tab active" data-tab="login">Masuk</button>
+      <button class="tab" data-tab="register">Daftar</button>
+    </div>
+
+    <!-- Form Login -->
+    <form class="form" id="loginForm">
+      <h3>Selamat datang kembali</h3>
+      <p class="sub">Masuk untuk membuka kartu member dan klaim diskon.</p>
+      <label for="loginEmail">Email</label>
+      <input type="email" id="loginEmail" placeholder="kamu@email.com" required>
+      <button class="btn btn-primary full" type="submit">Masuk ke Akun</button>
+      <p class="err" id="loginErr"></p>
+    </form>
+
+    <!-- Form Register -->
+    <form class="form hidden" id="registerForm">
+      <h3>Gabung BrewClub</h3>
+      <p class="sub">Gratis, dan langsung bisa klaim semua promo.</p>
+      <label for="regName">Nama lengkap</label>
+      <input type="text" id="regName" placeholder="Nama kamu" required>
+      <label for="regEmail">Email</label>
+      <input type="email" id="regEmail" placeholder="kamu@email.com" required>
+      <label for="regPhone">Nomor WhatsApp</label>
+      <input type="tel" id="regPhone" placeholder="08xxxxxxxxxx" required>
+      <button class="btn btn-primary full" type="submit">Daftar Sekarang</button>
+    </form>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="app.js"></script>
+<script>
+  // Tab Switcher
+  document.querySelectorAll('.tab').forEach(t => {
+    t.addEventListener('click', (e) => {
+      e.preventDefault();
+      document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+      t.classList.add('active');
+      
+      const target = t.dataset.tab;
+      document.getElementById('loginForm').classList.toggle('hidden', target !== 'login');
+      document.getElementById('registerForm').classList.toggle('hidden', target !== 'register');
+      document.getElementById('loginErr').textContent = '';
+    });
+  });
+
+  // Handle Login
+  document.getElementById('loginForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const email = document.getElementById('loginEmail').value.trim().toLowerCase();
+    const existingUser = getUser();
+
+    if (!existingUser) {
+      document.getElementById('loginErr').textContent = 'Belum ada akun. Silakan daftar dulu.';
+      return;
+    }
+    if (email !== existingUser.email) {
+      document.getElementById('loginErr').textContent = 'Email tidak cocok dengan akun yang terdaftar.';
+      return;
+    }
+    
+    toast('Berhasil masuk!', 'success');
+    setTimeout(() => window.location.href = 'akun.html', 800);
+  });
+
+  // Handle Register
+  document.getElementById('registerForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const name = document.getElementById('regName').value.trim();
+    const email = document.getElementById('regEmail').value.trim().toLowerCase();
+    const phone = document.getElementById('regPhone').value.trim();
+
+    const newUser = {
+      id: 'BC-' + Math.floor(1000 + Math.random() * 9000),
+      name, email, phone,
+      joined: Date.now()
+    };
+
+    saveUser(newUser);
+    toast('Pendaftaran berhasil!', 'success');
+    setTimeout(() => window.location.href = 'akun.html', 800);
+  });
+</script>
+</body>
+</html>
