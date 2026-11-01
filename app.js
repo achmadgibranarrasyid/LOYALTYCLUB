@@ -14,7 +14,13 @@ function saveUser(user) {
   localStorage.setItem(STORE_KEY, JSON.stringify(user));
 }
 
-function logoutUser() {
+async function logoutUser() {
+  try {
+    await logoutCustomer();
+  } catch (error) {
+    toast(error.message, 'error');
+    return;
+  }
   localStorage.removeItem(STORE_KEY);
   window.location.href = 'index.html';
 }
@@ -70,7 +76,7 @@ function drawQR(canvas, seedStr) {
 
   const inFinder = (x, y) => (x < 8 && y < 8) || (x >= S - 8 && y < 8) || (x < 8 && y >= S - 8);
 
-  ctx.fillStyle = '#1E1611';
+  ctx.fillStyle = '#29491F';
   for (let y = 0; y < S; y++) {
     for (let x = 0; x < S; x++) {
       if (inFinder(x, y)) continue;
@@ -79,9 +85,9 @@ function drawQR(canvas, seedStr) {
   }
 
   const finder = (px, py) => {
-    ctx.fillStyle = '#1E1611'; ctx.fillRect(px * cell, py * cell, 7 * cell, 7 * cell);
+    ctx.fillStyle = '#29491F'; ctx.fillRect(px * cell, py * cell, 7 * cell, 7 * cell);
     ctx.fillStyle = '#FFFFFF'; ctx.fillRect((px + 1) * cell, (py + 1) * cell, 5 * cell, 5 * cell);
-    ctx.fillStyle = '#1E1611'; ctx.fillRect((px + 2) * cell, (py + 2) * cell, 3 * cell, 3 * cell);
+    ctx.fillStyle = '#29491F'; ctx.fillRect((px + 2) * cell, (py + 2) * cell, 3 * cell, 3 * cell);
   };
   finder(0, 0); finder(S - 7, 0); finder(0, S - 7);
 }

@@ -13,7 +13,7 @@
 
 <nav class="nav">
   <div class="nav-inner">
-    <a href="index.html" class="logo"><span class="logo-mark">☕</span> BrewClub</a>
+    <a href="index.html" class="logo" aria-label="MONT"><img class="brand-logo" src="mont-logo.svg" alt="MONT"></a>
     <div class="nav-actions">
       <a href="index.html" class="btn btn-ghost">Kembali ke Beranda</a>
     </div>
@@ -33,8 +33,21 @@
       <p class="sub">Masuk untuk membuka kartu member dan klaim diskon.</p>
       <label for="loginEmail">Email</label>
       <input type="email" id="loginEmail" placeholder="kamu@email.com" required>
+      <label for="loginPassword">Kata sandi</label>
+      <input type="password" id="loginPassword" autocomplete="current-password" required>
+      <button class="auth-link" type="button" id="forgotPasswordLink">Lupa kata sandi?</button>
       <button class="btn btn-primary full" type="submit">Masuk ke Akun</button>
       <p class="err" id="loginErr"></p>
+    </form>
+
+    <form class="form hidden" id="forgotPasswordForm">
+      <h3>Atur ulang kata sandi</h3>
+      <p class="sub">Jika email terdaftar, kami akan mengirim tautan untuk mengatur ulang kata sandi.</p>
+      <label for="forgotEmail">Email akun</label>
+      <input type="email" id="forgotEmail" autocomplete="email" required>
+      <button class="btn btn-primary full" type="submit">Kirim tautan</button>
+      <button class="auth-link" type="button" id="backToLogin">Kembali ke login</button>
+      <p class="err" id="forgotErr" role="alert"></p>
     </form>
 
     <!-- Form Register -->
@@ -47,13 +60,17 @@
       <input type="email" id="regEmail" placeholder="kamu@email.com" required>
       <label for="regPhone">Nomor WhatsApp</label>
       <input type="tel" id="regPhone" placeholder="08xxxxxxxxxx" required>
+      <label for="regPassword">Kata sandi (minimal 12 karakter)</label>
+      <input type="password" id="regPassword" autocomplete="new-password" minlength="12" maxlength="128" required>
+      <label class="consent-label"><input id="regConsent" type="checkbox" required> Saya menyetujui data saya diproses sesuai <a href="privacy.html" target="_blank" rel="noopener">Kebijakan Privasi</a>.</label>
       <button class="btn btn-primary full" type="submit">Daftar Sekarang</button>
+      <p class="err" id="registerErr"></p>
     </form>
   </div>
 </div>
 
 <div id="toast"></div>
-
+<script src="customer-api.js"></script>
 <script src="app.js"></script>
 <script>
   // Tab Switcher
@@ -66,45 +83,70 @@
       const target = t.dataset.tab;
       document.getElementById('loginForm').classList.toggle('hidden', target !== 'login');
       document.getElementById('registerForm').classList.toggle('hidden', target !== 'register');
+      document.getElementById('forgotPasswordForm').classList.add('hidden');
+      document.querySelector('.tabs').classList.remove('hidden');
       document.getElementById('loginErr').textContent = '';
+      document.getElementById('registerErr').textContent = '';
     });
   });
 
   // Handle Login
-  document.getElementById('loginForm').addEventListener('submit', (e) => {
+  document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = document.getElementById('loginEmail').value.trim().toLowerCase();
-    const existingUser = getUser();
-
-    if (!existingUser) {
-      document.getElementById('loginErr').textContent = 'Belum ada akun. Silakan daftar dulu.';
-      return;
+    const error = document.getElementById('loginErr');
+    try {
+      await loginCustomer(email, document.getElementById('loginPassword').value);
+      toast('Berhasil masuk!', 'success');
+      setTimeout(() => window.location.href = 'akun.html', 800);
+    } catch (requestError) {
+      error.textContent = requestError.message;
     }
-    if (email !== existingUser.email) {
-      document.getElementById('loginErr').textContent = 'Email tidak cocok dengan akun yang terdaftar.';
-      return;
-    }
-    
-    toast('Berhasil masuk!', 'success');
-    setTimeout(() => window.location.href = 'akun.html', 800);
   });
 
   // Handle Register
-  document.getElementById('registerForm').addEventListener('submit', (e) => {
+  document.getElementById('registerForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const name = document.getElementById('regName').value.trim();
     const email = document.getElementById('regEmail').value.trim().toLowerCase();
     const phone = document.getElementById('regPhone').value.trim();
+    const password = document.getElementById('regPassword').value;
+    const error = document.getElementById('registerErr');
+    const submitButton = document.querySelector('#registerForm button[type="submit"]');
+    submitButton.disabled = true;
+    error.textContent = '';
+    try {
+      await createCustomer(name, email, phone, password, document.getElementById('regConsent').checked);
+      toast('Pendaftaran berhasil!', 'success');
+      setTimeout(() => window.location.href = 'akun.html', 800);
+    } catch (err) {
+      error.textContent = err.message;
+    } finally {
+      submitButton.disabled = false;
+    }
+  });
 
-    const newUser = {
-      id: 'BC-' + Math.floor(1000 + Math.random() * 9000),
-      name, email, phone,
-      joined: Date.now()
-    };
-
-    saveUser(newUser);
-    toast('Pendaftaran berhasil!', 'success');
-    setTimeout(() => window.location.href = 'akun.html', 800);
+  document.getElementById('forgotPasswordLink').addEventListener('click', () => {
+    document.getElementById('loginForm').classList.add('hidden');
+    document.getElementById('registerForm').classList.add('hidden');
+    document.getElementById('forgotPasswordForm').classList.remove('hidden');
+    document.querySelector('.tabs').classList.add('hidden');
+    document.getElementById('forgotEmail').value = document.getElementById('loginEmail').value;
+  });
+  document.getElementById('backToLogin').addEventListener('click', () => {
+    document.getElementById('forgotPasswordForm').classList.add('hidden');
+    document.getElementById('loginForm').classList.remove('hidden');
+    document.querySelector('.tabs').classList.remove('hidden');
+  });
+  document.getElementById('forgotPasswordForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const error = document.getElementById('forgotErr');
+    try {
+      const result = await requestPasswordReset(document.getElementById('forgotEmail').value.trim().toLowerCase());
+      error.textContent = result.message;
+    } catch (requestError) {
+      error.textContent = requestError.message;
+    }
   });
 </script>
 </body>

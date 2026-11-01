@@ -13,7 +13,7 @@
 
 <nav class="nav">
   <div class="nav-inner">
-    <a href="index.html" class="logo"><span class="logo-mark">☕</span> BrewClub</a>
+    <a href="index.html" class="logo" aria-label="MONT"><img class="brand-logo" src="mont-logo.svg" alt="MONT"></a>
     <div class="nav-links">
       <a href="index.html">Beranda</a>
     </div>
@@ -29,8 +29,8 @@
     <!-- Kartu Digital -->
     <div class="mcard">
       <div class="mcard-top">
-        <span class="brand">BrewClub</span>
-        <span class="tier-pill" style="background:var(--gold); color:#2A1D15;">MEMBER AKTIF</span>
+        <img class="brand-logo" src="mont-logo.svg" alt="MONT">
+        <span class="tier-pill">MEMBER AKTIF</span>
       </div>
       <div class="mcard-mid">
         <canvas id="qrCanvas" width="200" height="200"></canvas>
@@ -63,23 +63,25 @@
 </div>
 
 <div id="toast"></div>
-
+<script src="customer-api.js"></script>
 <script src="app.js"></script>
 <script>
   // Cek Autentikasi saat halaman dimuat
-  const currentUser = getUser();
-  
-  if (!currentUser) {
-    // Jika belum login, tendang ke halaman login
-    window.location.href = 'login.html';
-  } else {
-    // Tampilkan data user
+  getCustomerSession().then(session => {
+    if (!session.authenticated || !session.customer) {
+      localStorage.removeItem('brewclub_v2');
+      window.location.replace('login.html');
+      return;
+    }
+    const currentUser = session.customer;
+    saveUser(currentUser);
     document.getElementById('mName').textContent = currentUser.name;
     document.getElementById('mId').textContent = 'ID · ' + currentUser.id;
-    
-    // Render QR Code unik berdasarkan ID dan Email
     drawQR(document.getElementById('qrCanvas'), currentUser.id + currentUser.email);
-  }
+  }).catch(error => {
+    console.error('Sesi pelanggan gagal diverifikasi:', error);
+    window.location.replace('login.html');
+  });
 </script>
 </body>
 </html>

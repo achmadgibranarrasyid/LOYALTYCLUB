@@ -14,7 +14,7 @@
 <!-- ================= NAV ================= -->
 <nav class="nav">
   <div class="nav-inner">
-    <a href="index.html" class="logo"><span class="logo-mark">☕</span> BrewClub</a>
+    <a href="index.html" class="logo" aria-label="MONT"><img class="brand-logo" src="mont-logo.svg" alt="MONT"></a>
     <div class="nav-links">
       <a href="#diskon">Diskon Spesial</a>
       <a href="#bundling">Bundling</a>
@@ -72,7 +72,7 @@
 
     <div class="card-mock">
       <div class="card-top">
-        <span class="brand">BrewClub</span>
+        <img class="brand-logo" src="mont-logo.svg" alt="MONT">
         <span class="tier-pill">MEMBER CARD</span>
       </div>
       <div class="card-mid">
@@ -96,7 +96,7 @@
 <div class="strip">
   <div class="strip-inner">
     <div class="strip-item"><strong>Up to 50%</strong><span>Diskon Spesial</span></div>
-    <div class="strip-item"><strong>3 Paket</strong><span>Bundling Hemat</span></div>
+    <div class="strip-item"><strong id="bundlingPromoCount">3 Paket</strong><span>Bundling Hemat</span></div>
     <div class="strip-item"><strong>Tanpa Minimum</strong><span>Klaim di Kasir</span></div>
     <div class="strip-item"><strong>Gratis</strong><span>Biaya Pendaftaran</span></div>
   </div>
@@ -168,7 +168,7 @@
 </section>
 
 <!-- ================= CARA KLAIM ================= -->
-<section class="block" id="cara" style="background:#fff; border-block:1px solid var(--line);">
+<section class="block" id="cara" style="background:var(--surface); border-block:1px solid var(--line);">
   <div class="container">
     <div class="sec-head reveal">
       <span class="eyebrow">Cara Klaim</span>
@@ -202,7 +202,7 @@
     <p>Gratis, tanpa biaya tahunan. Daftar sekarang dan langsung nikmati promo member.</p>
     <button class="btn btn-primary guest-only" id="ctaJoin">Gabung BrewClub →</button>
     <!-- Link ke halaman pengguna.html -->
-    <a href="pengguna.html" class="btn btn-primary user-only" style="background:var(--gold); color:#2A1D15;">Buka Kartu Member →</a>
+    <a href="pengguna.html" class="btn btn-primary user-only">Buka Kartu Member →</a>
   </div>
 </section>
 
@@ -229,8 +229,21 @@
       <p class="sub">Masuk untuk membuka kartu member dan klaim diskon.</p>
       <label for="loginEmail">Email</label>
       <input type="email" id="loginEmail" placeholder="kamu@email.com" required>
+      <label for="loginPassword">Kata sandi</label>
+      <input type="password" id="loginPassword" autocomplete="current-password" required>
+      <button class="auth-link" type="button" id="forgotPasswordLink">Lupa kata sandi?</button>
       <button class="btn btn-primary full" type="submit">Masuk ke Akun</button>
       <p class="err" id="loginErr"></p>
+    </form>
+
+    <form class="form hidden" id="forgotPasswordForm">
+      <h3>Atur ulang kata sandi</h3>
+      <p class="sub">Jika email terdaftar, kami akan mengirim tautan untuk mengatur ulang kata sandi.</p>
+      <label for="forgotEmail">Email akun</label>
+      <input type="email" id="forgotEmail" autocomplete="email" required>
+      <button class="btn btn-primary full" type="submit">Kirim tautan</button>
+      <button class="auth-link" type="button" id="backToLogin">Kembali ke login</button>
+      <p class="err" id="forgotErr" role="alert"></p>
     </form>
 
     <!-- Form Register -->
@@ -243,12 +256,41 @@
       <input type="email" id="regEmail" placeholder="kamu@email.com" required>
       <label for="regPhone">Nomor WhatsApp</label>
       <input type="tel" id="regPhone" placeholder="08xxxxxxxxxx" required>
+      <label for="regPassword">Kata sandi (minimal 12 karakter)</label>
+      <input type="password" id="regPassword" autocomplete="new-password" minlength="12" maxlength="128" required>
+      <label class="consent-label"><input id="regConsent" type="checkbox" required> Saya menyetujui data saya diproses sesuai <a href="privacy.html" target="_blank" rel="noopener">Kebijakan Privasi</a>.</label>
       <button class="btn btn-primary full" type="submit">Daftar Sekarang</button>
+      <p class="err" id="registerErr"></p>
     </form>
   </div>
 </div>
 
 <div id="toast"></div>
+<script src="customer-api.js"></script>
 <script src="script.js"></script>
+<script>
+  document.getElementById('forgotPasswordLink').addEventListener('click', () => {
+    document.getElementById('loginForm').classList.add('hidden');
+    document.getElementById('registerForm').classList.add('hidden');
+    document.getElementById('forgotPasswordForm').classList.remove('hidden');
+    document.querySelector('.modal .tabs').classList.add('hidden');
+    document.getElementById('forgotEmail').value = document.getElementById('loginEmail').value;
+  });
+  document.getElementById('backToLogin').addEventListener('click', () => {
+    document.getElementById('forgotPasswordForm').classList.add('hidden');
+    document.getElementById('loginForm').classList.remove('hidden');
+    document.querySelector('.modal .tabs').classList.remove('hidden');
+  });
+  document.getElementById('forgotPasswordForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const error = document.getElementById('forgotErr');
+    try {
+      const result = await requestPasswordReset(document.getElementById('forgotEmail').value.trim().toLowerCase());
+      error.textContent = result.message;
+    } catch (requestError) {
+      error.textContent = requestError.message;
+    }
+  });
+</script>
 </body>
 </html>

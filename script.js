@@ -43,7 +43,7 @@ function drawQR(canvas, seedStr) {
 
   const inFinder = (x, y) => (x < 8 && y < 8) || (x >= S - 8 && y < 8) || (x < 8 && y >= S - 8);
 
-  ctx.fillStyle = '#1E1611';
+  ctx.fillStyle = '#29491F';
   for (let y = 0; y < S; y++) {
     for (let x = 0; x < S; x++) {
       if (inFinder(x, y)) continue;
@@ -52,9 +52,9 @@ function drawQR(canvas, seedStr) {
   }
 
   const finder = (px, py) => {
-    ctx.fillStyle = '#1E1611'; ctx.fillRect(px * cell, py * cell, 7 * cell, 7 * cell);
+    ctx.fillStyle = '#29491F'; ctx.fillRect(px * cell, py * cell, 7 * cell, 7 * cell);
     ctx.fillStyle = '#FFFFFF'; ctx.fillRect((px + 1) * cell, (py + 1) * cell, 5 * cell, 5 * cell);
-    ctx.fillStyle = '#1E1611'; ctx.fillRect((px + 2) * cell, (py + 2) * cell, 3 * cell, 3 * cell);
+    ctx.fillStyle = '#29491F'; ctx.fillRect((px + 2) * cell, (py + 2) * cell, 3 * cell, 3 * cell);
   };
   finder(0, 0); finder(S - 7, 0); finder(0, S - 7);
 }
@@ -94,6 +94,102 @@ function observeReveal() {
   $$('.reveal:not(.in)').forEach(el => io.observe(el));
 }
 
+function bindPromoClaims() {
+  $$('.claim-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (getUser()) {
+        toast('Mengalihkan ke kartu member...', 'success');
+        setTimeout(() => { window.location.href = 'pengguna.html'; }, 500);
+      } else {
+        openPromoLogin();
+      }
+    });
+  });
+}
+
+function openPromoLogin() {
+  const loginButton = $('#btnLogin');
+  if (loginButton) loginButton.click();
+  toast('Masuk / daftar dulu untuk klaim promo.', 'error');
+}
+
+function buildPromoCard(promo) {
+  const card = document.createElement('div');
+  card.className = 'promo-card reveal in';
+
+  const badge = document.createElement('div');
+  badge.className = `badge${promo.category === 'bundling' ? ' gold' : ''}`;
+  badge.textContent = promo.label;
+  const title = document.createElement('h3');
+  title.textContent = promo.title;
+  const description = document.createElement('p');
+  description.textContent = promo.description;
+  card.append(badge, title, description);
+
+  if (promo.starts_on || promo.ends_on) {
+    const validity = document.createElement('small');
+    validity.className = 'promo-validity';
+    const formatDate = value => new Date(`${value}T12:00:00`).toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    });
+    validity.textContent = `Berlaku ${promo.starts_on ? `mulai ${formatDate(promo.starts_on)}` : ''}${promo.starts_on && promo.ends_on ? ' sampai ' : ''}${promo.ends_on ? `hingga ${formatDate(promo.ends_on)}` : ''}`;
+    card.append(validity);
+  }
+
+  if (promo.price_old || promo.price_new) {
+    const prices = document.createElement('div');
+    prices.className = 'price-row';
+    if (promo.price_old) {
+      const oldPrice = document.createElement('span');
+      oldPrice.className = 'price-old';
+      oldPrice.textContent = promo.price_old;
+      prices.append(oldPrice);
+    }
+    if (promo.price_new) {
+      const newPrice = document.createElement('span');
+      newPrice.className = 'price-new';
+      newPrice.textContent = promo.price_new;
+      prices.append(newPrice);
+    }
+    card.append(prices);
+  }
+
+  const button = document.createElement('button');
+  button.className = 'btn btn-accent claim-btn';
+  button.textContent = promo.category === 'bundling' ? 'Pesan Bundling' : 'Klaim Diskon';
+  card.append(button);
+  return card;
+}
+
+async function loadPublicPromos() {
+  const groups = {
+    diskon: $('#diskon .promo-grid'),
+    bundling: $('#bundling .promo-grid')
+  };
+  try {
+    const response = await fetch('/api/promos');
+    const promos = await response.json();
+    if (!response.ok) throw new Error(promos.error || 'Promo gagal dimuat.');
+    Object.values(groups).forEach(group => group.replaceChildren());
+    promos.forEach(promo => {
+      if (groups[promo.category]) groups[promo.category].append(buildPromoCard(promo));
+    });
+    const bundlingCount = promos.filter(promo => promo.category === 'bundling').length;
+    $('#bundlingPromoCount').textContent = `${bundlingCount} Paket`;
+    bindPromoClaims();
+  } catch (error) {
+    Object.values(groups).forEach(group => {
+      group.replaceChildren();
+      const message = document.createElement('p');
+      message.className = 'promo-load-error';
+      message.textContent = error.message;
+      group.append(message);
+    });
+  }
+}
+
 /* =========================================================
    LOGIKA HALAMAN UTAMA (INDEX)
    ========================================================= */
@@ -114,7 +210,10 @@ function initIndexPage() {
     $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
     $('#loginForm').classList.toggle('hidden', name !== 'login');
     $('#registerForm').classList.toggle('hidden', name !== 'register');
+    if ($('#forgotPasswordForm')) $('#forgotPasswordForm').classList.add('hidden');
+    if ($('.modal .tabs')) $('.modal .tabs').classList.remove('hidden');
     if($('#loginErr')) $('#loginErr').textContent = '';
+    if($('#registerErr')) $('#registerErr').textContent = '';
   }
 
   // Auth Events
@@ -127,35 +226,41 @@ function initIndexPage() {
   $$('.tab').forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
 
   // Form Submit
-  $('#loginForm').addEventListener('submit', (e) => {
+  $('#loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = $('#loginEmail').value.trim().toLowerCase();
-    const existingUser = getUser();
-    if (!existingUser) {
-      $('#loginErr').textContent = 'Belum ada akun. Silakan daftar dulu.';
-      return;
+    try {
+      await loginCustomer(email, $('#loginPassword').value);
+      closeAuth();
+      renderUserState();
+      toast('Berhasil masuk!', 'success');
+      setTimeout(() => { window.location.href = 'pengguna.html'; }, 800);
+    } catch (error) {
+      $('#loginErr').textContent = error.message;
     }
-    if (email !== existingUser.email) {
-      $('#loginErr').textContent = 'Email tidak cocok dengan akun yang terdaftar.';
-      return;
-    }
-    closeAuth();
-    renderUserState();
-    toast('Berhasil masuk!', 'success');
-    setTimeout(() => { window.location.href = 'pengguna.html'; }, 800);
   });
 
-  $('#registerForm').addEventListener('submit', (e) => {
+  $('#registerForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const name = $('#regName').value.trim();
     const email = $('#regEmail').value.trim().toLowerCase();
     const phone = $('#regPhone').value.trim();
-    const newUser = { id: 'BC-' + Math.floor(1000 + Math.random() * 9000), name, email, phone, joined: Date.now() };
-    saveUser(newUser);
-    closeAuth();
-    renderUserState();
-    toast('Pendaftaran berhasil!', 'success');
-    setTimeout(() => { window.location.href = 'pengguna.html'; }, 800);
+    const password = $('#regPassword').value;
+    const error = $('#registerErr');
+    const submitButton = $('#registerForm button[type="submit"]');
+    submitButton.disabled = true;
+    error.textContent = '';
+    try {
+      await createCustomer(name, email, phone, password, $('#regConsent').checked);
+      closeAuth();
+      renderUserState();
+      toast('Pendaftaran berhasil!', 'success');
+      setTimeout(() => { window.location.href = 'pengguna.html'; }, 800);
+    } catch (err) {
+      error.textContent = err.message;
+    } finally {
+      submitButton.disabled = false;
+    }
   });
 
   // Mobile Menu
@@ -171,29 +276,32 @@ function initIndexPage() {
     $('#mmJoin').addEventListener('click', () => { mobileMenu.classList.remove('open'); menuToggle.textContent='☰'; openAuth('register'); });
   }
 
-  // Promo Claim Buttons
-  $$('.claim-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      if (getUser()) {
-        toast('Mengalihkan ke kartu member...', 'success');
-        setTimeout(() => { window.location.href = 'pengguna.html'; }, 500);
-      } else {
-        openAuth('login');
-        toast('Masuk / daftar dulu untuk klaim promo.', 'error');
-      }
-    });
-  });
-
   // Render Hero QR
   drawQR($('#heroQr'), 'BC-2481-andi@example.com');
   observeReveal();
+  loadPublicPromos();
 }
 
 /* =========================================================
    LOGIKA HALAMAN PENGGUNA (PENGGUNA.HTML)
    ========================================================= */
-function initAccountPage() {
-  const currentUser = getUser();
+async function initAccountPage() {
+  let currentUser;
+  try {
+    const session = await getCustomerSession();
+    if (!session.authenticated || !session.customer) {
+      removeUser();
+      window.location.href = 'login.html';
+      return;
+    }
+    currentUser = session.customer;
+    saveUser(currentUser);
+    renderUserState();
+  } catch (error) {
+    console.error('Sesi pelanggan gagal diverifikasi:', error);
+    window.location.href = 'login.html';
+    return;
+  }
   
   // Proteksi Halaman: Jika belum login, tendang ke index
   if (!currentUser) {
@@ -215,7 +323,13 @@ function initAccountPage() {
   drawQR($('#qrCanvas'), currentUser.id + currentUser.email);
 
   // Tombol Logout
-  $('#btnLogout').addEventListener('click', () => {
+  $('#btnLogout').addEventListener('click', async () => {
+    try {
+      await logoutCustomer();
+    } catch (error) {
+      toast(error.message, 'error');
+      return;
+    }
     removeUser();
     toast('Berhasil keluar...', 'success');
     setTimeout(() => { window.location.href = 'index.html'; }, 800);
