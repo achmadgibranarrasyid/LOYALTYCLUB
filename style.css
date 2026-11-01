@@ -135,7 +135,8 @@ body:not(.logged-in) .user-only{display:none !important}
 .tier-pill{font-size:10.5px;font-weight:800;letter-spacing:.12em;padding:5px 12px;border-radius:999px;background:var(--gold);color:var(--ink);white-space:nowrap}
 .card-mid{display:flex;gap:18px;align-items:center;margin-bottom:24px;position:relative;z-index:1}
 .card-qr{background:#fff;border-radius:14px;padding:8px;display:grid;place-items:center;flex-shrink:0}
-.card-qr canvas{display:block;width:96px;height:96px;border-radius:6px}
+.card-qr{width:112px;height:112px;display:grid;place-items:center;text-align:center;color:var(--ink);font-size:13px;font-weight:800;letter-spacing:.08em}
+.member-qr{display:block;width:200px;height:200px;background:#fff;image-rendering:auto}
 .card-info small{display:block;font-size:10px;letter-spacing:.14em;color:rgba(255,255,255,.5);font-weight:700;margin-bottom:3px}
 .card-info strong{display:block;font-size:17px;margin-bottom:12px;font-weight:700}
 .card-info span{font-size:13px;letter-spacing:.08em;opacity:.75}
@@ -294,7 +295,7 @@ footer{border-top:1px solid var(--line);padding:48px 0 36px;margin-top:auto}
   position: relative;
   z-index: 1;
 }
-.dc-qr-wrapper canvas {
+.dc-qr-wrapper .member-qr {
   width: 200px;
   height: 200px;
   display: block;
@@ -411,15 +412,15 @@ footer{border-top:1px solid var(--line);padding:48px 0 36px;margin-top:auto}
   /* Akun Page Mobile */
   .account-wrapper { padding-top: 24px; gap: 20px; }
   .digital-card { padding: 22px; }
-  .dc-qr-wrapper canvas { width: 180px; height: 180px; }
+  .dc-qr-wrapper .member-qr { width: 180px; height: 180px; }
   .dc-bottom strong { font-size: 15px; }
   .page-account .hide-xs { display: none !important; }
 }
 
 @media (max-width:380px){
   .hide-xs{display:none}.brand-logo{width:130px;max-height:28px}
-  #qrCanvas{width:88px;height:88px} .btn{padding:10px 14px;font-size:13px}
-  .dc-qr-wrapper canvas { width: 150px; height: 150px; }
+  .btn{padding:10px 14px;font-size:13px}
+  .dc-qr-wrapper .member-qr { width: 150px; height: 150px; }
 }
 
 @media (hover:none){

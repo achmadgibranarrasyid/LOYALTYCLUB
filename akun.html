@@ -33,7 +33,7 @@
         <span class="tier-pill">MEMBER AKTIF</span>
       </div>
       <div class="mcard-mid">
-        <canvas id="qrCanvas" width="200" height="200"></canvas>
+        <img id="qrCodeImage" class="member-qr" alt="QR Code member yang dapat dipindai" width="200" height="200">
         <div>
           <small>MEMBER</small>
           <strong id="mName">—</strong>
@@ -46,7 +46,7 @@
     <!-- Panduan -->
     <div class="info-box">
       <h4>Panduan Klaim Promo</h4>
-      <p>Tunjukkan QR Code di atas ke kasir atau barista untuk mengklaim diskon dan bundling berikut:</p>
+      <p>Tunjukkan QR Code yang berisi ID Member ini ke kasir atau barista untuk mengklaim diskon dan bundling berikut:</p>
       <ul>
         <li>Diskon 20% Semua Pastry</li>
         <li>Diskon 15% Signature Latte</li>
@@ -77,7 +77,7 @@
     saveUser(currentUser);
     document.getElementById('mName').textContent = currentUser.name;
     document.getElementById('mId').textContent = 'ID · ' + currentUser.id;
-    drawQR(document.getElementById('qrCanvas'), currentUser.id + currentUser.email);
+    document.getElementById('qrCodeImage').src = '/api/customer/qr';
   }).catch(error => {
     console.error('Sesi pelanggan gagal diverifikasi:', error);
     window.location.replace('login.html');
