@@ -1,0 +1,13 @@
+"use strict";
+
+const { createDatabaseClient, createHandler } = require("../backend/server");
+
+const client = createDatabaseClient();
+const handler = createHandler(client);
+
+module.exports = handler;
+module.exports.config = {
+  api: {
+    bodyParser: false,
+  },
+};

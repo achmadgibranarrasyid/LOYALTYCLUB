@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BrewClub — Diskon & Bundling Spesial</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ================= NAV ================= -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="index.html" class="logo" aria-label="MONT"><img class="brand-logo" src="mont-logo.svg" alt="MONT"></a>
+    <div class="nav-links">
+      <a href="#diskon">Diskon Spesial</a>
+      <a href="#bundling">Bundling</a>
+      <a href="#cara">Cara Klaim</a>
+    </div>
+    <div class="nav-actions">
+      <button class="btn btn-ghost guest-only" id="btnLogin">Masuk</button>
+      <button class="btn btn-primary guest-only" id="btnJoin">Gabung <span class="hide-xs">Member</span></button>
+      
+      <!-- Link ke halaman pengguna.html -->
+      <a href="pengguna.html" class="user-chip user-only" id="btnUser">
+        <span class="avatar" id="navAvatar">A</span>
+        <span class="user-meta">
+          <strong id="navName">Andi</strong>
+          <small>Kartu Member</small>
+        </span>
+      </a>
+      
+      <button class="icon-btn menu-toggle" id="menuToggle" aria-label="Buka menu">☰</button>
+    </div>
+  </div>
+  
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="#diskon">Diskon Spesial</a>
+    <a href="#bundling">Bundling</a>
+    <a href="#cara">Cara Klaim</a>
+    <div class="mm-actions">
+      <button class="btn btn-ghost full guest-only" id="mmLogin">Masuk</button>
+      <button class="btn btn-primary full guest-only" id="mmJoin">Gabung Member</button>
+      <!-- Link ke halaman pengguna.html -->
+      <a href="pengguna.html" class="btn btn-primary full user-only">Buka Kartu Member</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ================= HERO ================= -->
+<header class="hero">
+  <div class="container hero-grid">
+    <div>
+      <span class="eyebrow">✦ Khusus Member BrewClub</span>
+      <h1>Diskon &amp; Bundling <em>Spesial</em> Setiap Hari.</h1>
+      <p class="lead">
+        Tunjukkan kartu member digitalmu di kasir dan nikmati potongan harga langsung 
+        untuk kopi favoritmu, atau pesan paket bundling hemat yang cuma bisa didapatkan oleh member.
+      </p>
+      <div class="hero-cta">
+        <button class="btn btn-primary guest-only" id="heroJoin">Daftar Member →</button>
+        <a href="#diskon" class="btn btn-ghost">Lihat Promo</a>
+      </div>
+      <div class="hero-proof">
+        <div class="avatars"><span>A</span><span>R</span><span>S</span><span>+</span></div>
+        <span>12.400+ member sudah klaim diskonnya</span>
+      </div>
+    </div>
+
+    <div class="card-mock">
+      <div class="card-top">
+        <img class="brand-logo" src="mont-logo.svg" alt="MONT">
+        <span class="tier-pill">MEMBER CARD</span>
+      </div>
+      <div class="card-mid">
+        <div class="card-qr" aria-label="QR Code member tampil setelah masuk">QR MEMBER<br>Tampil setelah masuk</div>
+        <div class="card-info">
+          <small>NAMA MEMBER</small>
+          <strong>Member BrewClub</strong>
+          <small>STATUS</small>
+          <span>Masuk untuk melihat QR</span>
+        </div>
+      </div>
+      <div class="card-bottom">
+        <div><small>TIPE</small><strong>Digital</strong></div>
+        <div><small>SEJAK</small><strong>2023</strong></div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ================= STRIP ================= -->
+<div class="strip">
+  <div class="strip-inner">
+    <div class="strip-item"><strong>Up to 50%</strong><span>Diskon Spesial</span></div>
+    <div class="strip-item"><strong id="bundlingPromoCount">3 Paket</strong><span>Bundling Hemat</span></div>
+    <div class="strip-item"><strong>Tanpa Minimum</strong><span>Klaim di Kasir</span></div>
+    <div class="strip-item"><strong>Gratis</strong><span>Biaya Pendaftaran</span></div>
+  </div>
+</div>
+
+<!-- ================= DISKON ================= -->
+<section class="block" id="diskon">
+  <div class="container">
+    <div class="sec-head reveal">
+      <span class="eyebrow">Diskon Spesial</span>
+      <h2>Potongan harga khusus member</h2>
+      <p>Berlaku setiap hari. Cukup tunjukkan QR Code dari halaman member ke barista.</p>
+    </div>
+    <div class="promo-grid">
+      <div class="promo-card reveal">
+        <div class="badge">DISKON 20%</div>
+        <h3>Diskon 20% Semua Pastry</h3>
+        <p>Berlaku untuk croissant, danish, cinnamon roll, dan pastry lainnya.</p>
+        <button class="btn btn-accent claim-btn">Klaim Diskon</button>
+      </div>
+      <div class="promo-card reveal">
+        <div class="badge">DISKON 15%</div>
+        <h3>Diskon 15% Signature Latte</h3>
+        <p>Nikmati potongan harga untuk minuman latte andalan kami.</p>
+        <button class="btn btn-accent claim-btn">Klaim Diskon</button>
+      </div>
+      <div class="promo-card reveal">
+        <div class="badge">BUY 1 GET 1</div>
+        <h3>Diskon 50% Kopi Kedua</h3>
+        <p>Khusus pemesanan di hari Jumat. Berlaku untuk semua varian kopi.</p>
+        <button class="btn btn-accent claim-btn">Klaim Diskon</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= BUNDLING ================= -->
+<section class="block" id="bundling" style="padding-top:0">
+  <div class="container">
+    <div class="sec-head reveal">
+      <span class="eyebrow">Bundling Hemat</span>
+      <h2>Paket pas buat ngopi bareng</h2>
+      <p>Harga spesial yang tidak tersedia untuk non-member.</p>
+    </div>
+    <div class="promo-grid">
+      <div class="promo-card reveal">
+        <div class="badge gold">HEMAT 30%</div>
+        <h3>Paket Ngopi Pagi</h3>
+        <p>1 Americano dingin/panas + 1 Butter Croissant.</p>
+        <div class="price-row"><span class="price-old">Rp 50.000</span><span class="price-new">Rp 35.000</span></div>
+        <button class="btn btn-accent claim-btn">Pesan Bundling</button>
+      </div>
+      <div class="promo-card reveal">
+        <div class="badge gold">HEMAT 40%</div>
+        <h3>Paket Berdua</h3>
+        <p>2 Signature Latte + 2 Potong Cake pilihan.</p>
+        <div class="price-row"><span class="price-old">Rp 140.000</span><span class="price-new">Rp 99.000</span></div>
+        <button class="btn btn-accent claim-btn">Pesan Bundling</button>
+      </div>
+      <div class="promo-card reveal">
+        <div class="badge gold">HEMAT 25%</div>
+        <h3>Paket WFH</h3>
+        <p>1 Kopi Susu + 1 Snack Box + 1 Air Mineral.</p>
+        <div class="price-row"><span class="price-old">Rp 65.000</span><span class="price-new">Rp 45.000</span></div>
+        <button class="btn btn-accent claim-btn">Pesan Bundling</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= CARA KLAIM ================= -->
+<section class="block" id="cara" style="background:var(--surface); border-block:1px solid var(--line);">
+  <div class="container">
+    <div class="sec-head reveal">
+      <span class="eyebrow">Cara Klaim</span>
+      <h2>Gampang, cuma butuh 1 menit</h2>
+      <p>Tidak perlu bawa kartu fisik. Semua diskon ada di HP-mu.</p>
+    </div>
+    <div class="promo-grid">
+      <div class="reveal" style="text-align:center; padding: 20px;">
+        <div style="font-size: 40px; margin-bottom: 16px;">1️⃣</div>
+        <h3 style="font-size: 18px; margin-bottom: 8px;">Masuk / Daftar</h3>
+        <p style="font-size: 14px; color: var(--muted);">Buat akun member gratis hanya dengan email. Langsung dapat akses ke semua promo.</p>
+      </div>
+      <div class="reveal" style="text-align:center; padding: 20px;">
+        <div style="font-size: 40px; margin-bottom: 16px;">2️⃣</div>
+        <h3 style="font-size: 18px; margin-bottom: 8px;">Buka Kartu</h3>
+        <p style="font-size: 14px; color: var(--muted);">Klik tombol "Kartu Member" di pojok kanan atas untuk menampilkan QR Code-mu.</p>
+      </div>
+      <div class="reveal" style="text-align:center; padding: 20px;">
+        <div style="font-size: 40px; margin-bottom: 16px;">3️⃣</div>
+        <h3 style="font-size: 18px; margin-bottom: 8px;">Tunjukkan ke Kasir</h3>
+        <p style="font-size: 14px; color: var(--muted);">Sebutkan promo yang dipilih, tunjukkan QR Code, dan diskon otomatis diterapkan.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= CTA ================= -->
+<section class="container" style="padding-top:60px; padding-bottom:20px;">
+  <div class="cta-band reveal">
+    <h2>Siap klaim diskon pertamamu?</h2>
+    <p>Gratis, tanpa biaya tahunan. Daftar sekarang dan langsung nikmati promo member.</p>
+    <button class="btn btn-primary guest-only" id="ctaJoin">Gabung BrewClub →</button>
+    <!-- Link ke halaman pengguna.html -->
+    <a href="pengguna.html" class="btn btn-primary user-only">Buka Kartu Member →</a>
+  </div>
+</section>
+
+<!-- ================= FOOTER ================= -->
+<footer>
+  <div class="container">
+    <div class="foot-bottom">© 2025 BrewClub — Kopi Senja. Semua hak dilindungi.</div>
+  </div>
+</footer>
+
+<!-- ================= MODAL AUTH (POPUP LOGIN/DAFTAR) ================= -->
+<div class="modal-overlay" id="authModal">
+  <div class="modal">
+    <button class="icon-btn modal-close" id="closeAuth" aria-label="Tutup">✕</button>
+    
+    <div class="tabs">
+      <button class="tab active" data-tab="login">Masuk</button>
+      <button class="tab" data-tab="register">Daftar</button>
+    </div>
+
+    <!-- Form Login -->
+    <form class="form" id="loginForm">
+      <h3>Selamat datang kembali</h3>
+      <p class="sub">Masuk untuk membuka kartu member dan klaim diskon.</p>
+      <label for="loginEmail">Email</label>
+      <input type="email" id="loginEmail" placeholder="kamu@email.com" required>
+      <label for="loginPassword">Kata sandi</label>
+      <input type="password" id="loginPassword" autocomplete="current-password" required>
+      <button class="auth-link" type="button" id="forgotPasswordLink">Lupa kata sandi?</button>
+      <button class="btn btn-primary full" type="submit">Masuk ke Akun</button>
+      <p class="err" id="loginErr"></p>
+    </form>
+
+    <form class="form hidden" id="forgotPasswordForm">
+      <h3>Atur ulang kata sandi</h3>
+      <p class="sub">Jika email terdaftar, kami akan mengirim tautan untuk mengatur ulang kata sandi.</p>
+      <label for="forgotEmail">Email akun</label>
+      <input type="email" id="forgotEmail" autocomplete="email" required>
+      <button class="btn btn-primary full" type="submit">Kirim tautan</button>
+      <button class="auth-link" type="button" id="backToLogin">Kembali ke login</button>
+      <p class="err" id="forgotErr" role="alert"></p>
+    </form>
+
+    <!-- Form Register -->
+    <form class="form hidden" id="registerForm">
+      <h3>Gabung BrewClub</h3>
+      <p class="sub">Gratis, dan langsung bisa klaim semua promo.</p>
+      <label for="regName">Nama lengkap</label>
+      <input type="text" id="regName" placeholder="Nama kamu" required>
+      <label for="regEmail">Email</label>
+      <input type="email" id="regEmail" placeholder="kamu@email.com" required>
+      <label for="regPhone">Nomor WhatsApp</label>
+      <input type="tel" id="regPhone" placeholder="08xxxxxxxxxx" required>
+      <label for="regPassword">Kata sandi (minimal 12 karakter)</label>
+      <input type="password" id="regPassword" autocomplete="new-password" minlength="12" maxlength="128" required>
+      <label class="consent-label"><input id="regConsent" type="checkbox" required> Saya menyetujui data saya diproses sesuai <a href="privacy.html" target="_blank" rel="noopener">Kebijakan Privasi</a>.</label>
+      <button class="btn btn-primary full" type="submit">Daftar Sekarang</button>
+      <p class="err" id="registerErr"></p>
+    </form>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script src="customer-api.js"></script>
+<script src="script.js"></script>
+<script>
+  document.getElementById('forgotPasswordLink').addEventListener('click', () => {
+    document.getElementById('loginForm').classList.add('hidden');
+    document.getElementById('registerForm').classList.add('hidden');
+    document.getElementById('forgotPasswordForm').classList.remove('hidden');
+    document.querySelector('.modal .tabs').classList.add('hidden');
+    document.getElementById('forgotEmail').value = document.getElementById('loginEmail').value;
+  });
+  document.getElementById('backToLogin').addEventListener('click', () => {
+    document.getElementById('forgotPasswordForm').classList.add('hidden');
+    document.getElementById('loginForm').classList.remove('hidden');
+    document.querySelector('.modal .tabs').classList.remove('hidden');
+  });
+  document.getElementById('forgotPasswordForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const error = document.getElementById('forgotErr');
+    try {
+      const result = await requestPasswordReset(document.getElementById('forgotEmail').value.trim().toLowerCase());
+      error.textContent = result.message;
+    } catch (requestError) {
+      error.textContent = requestError.message;
+    }
+  });
+</script>
+</body>
+</html>

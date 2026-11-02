@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kartu Member — BrewClub</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="index.html" class="logo" aria-label="MONT"><img class="brand-logo" src="mont-logo.svg" alt="MONT"></a>
+    <div class="nav-links">
+      <a href="index.html">Beranda</a>
+    </div>
+    <div class="nav-actions">
+      <a href="index.html" class="btn btn-ghost">Lihat Promo</a>
+      <button class="btn btn-ghost danger" onclick="logoutUser()">Keluar</button>
+    </div>
+  </div>
+</nav>
+
+<div class="page-wrapper">
+  <div class="akun-box">
+    <!-- Kartu Digital -->
+    <div class="mcard">
+      <div class="mcard-top">
+        <img class="brand-logo" src="mont-logo.svg" alt="MONT">
+        <span class="tier-pill">MEMBER AKTIF</span>
+      </div>
+      <div class="mcard-mid">
+        <img id="qrCodeImage" class="member-qr" alt="QR Code member yang dapat dipindai" width="200" height="200">
+        <div>
+          <small>MEMBER</small>
+          <strong id="mName">—</strong>
+          <small>ID MEMBER</small>
+          <span id="mId">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panduan -->
+    <div class="info-box">
+      <h4>Panduan Klaim Promo</h4>
+      <p>Tunjukkan QR Code yang berisi ID Member ini ke kasir atau barista untuk mengklaim diskon dan bundling berikut:</p>
+      <ul>
+        <li>Diskon 20% Semua Pastry</li>
+        <li>Diskon 15% Signature Latte</li>
+        <li>Diskon 50% Kopi Kedua (Jumat)</li>
+        <li>Harga Spesial Paket Bundling</li>
+      </ul>
+    </div>
+
+    <div class="info-box" style="background:var(--accent-soft); border-color:transparent;">
+      <h4 style="color:var(--ink);">Butuh bantuan?</h4>
+      <p>Jika QR Code tidak terbaca, sebutkan <strong>ID Member</strong> kamu ke kasir untuk proses klaim manual.</p>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script src="customer-api.js"></script>
+<script src="app.js"></script>
+<script>
+  // Cek Autentikasi saat halaman dimuat
+  getCustomerSession().then(session => {
+    if (!session.authenticated || !session.customer) {
+      localStorage.removeItem('brewclub_v2');
+      window.location.replace('login.html');
+      return;
+    }
+    const currentUser = session.customer;
+    saveUser(currentUser);
+    document.getElementById('mName').textContent = currentUser.name;
+    document.getElementById('mId').textContent = 'ID · ' + currentUser.id;
+    document.getElementById('qrCodeImage').src = '/api/customer/qr';
+  }).catch(error => {
+    console.error('Sesi pelanggan gagal diverifikasi:', error);
+    window.location.replace('login.html');
+  });
+</script>
+</body>
+</html>

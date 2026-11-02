@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+.vercel/
+backups/
+data/
+node_modules/
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*

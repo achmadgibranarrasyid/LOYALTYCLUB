@@ -1,13 +1,18 @@
 {
-  "name": "brewclub",
+  "name": "brewclub-loyalty",
   "version": "1.0.0",
   "private": true,
-  "description": "BrewClub loyalty membership website and administration backend",
+  "type": "commonjs",
   "engines": {
-    "node": ">=24.0.0"
+    "node": "22.x"
   },
   "scripts": {
     "start": "node backend/server.js",
-    "test": "node --test backend/server.test.js"
+    "test": "node --test backend/server.test.js",
+    "backup": "node scripts/backup.js"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.15.15",
+    "qrcode": "^1.5.4"
   }
 }

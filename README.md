@@ -1,69 +1,57 @@
 # BrewClub
 
-Website loyalty BrewClub dengan backend Python, database SQLite, autentikasi pelanggan, dan panel admin untuk mengelola promo serta pelanggan.
+Website loyalty BrewClub dengan backend Node.js, database SQLite/Turso, autentikasi pelanggan, QR member, dan panel admin untuk mengelola promo serta pelanggan.
 
 ## Menjalankan secara lokal
 
-Gunakan Python 3.11 atau lebih baru.
+Dibutuhkan Node.js 22 atau lebih baru.
 
 PowerShell:
 
 ```powershell
-$env:PYTHONDONTWRITEBYTECODE = "1"
-python -m pip install -r requirements.txt
+npm.cmd install
 $env:ADMIN_USERNAME = "admin"
-$env:ADMIN_PASSWORD = "gunakan-kata-sandi-kuat-minimal-12-karakter"
-python backend\server.py
+$env:ADMIN_PASSWORD = "gunakan-kata-sandi-kuat-minimal-16-karakter"
+npm.cmd start
 ```
 
-Buka [http://127.0.0.1:8000](http://127.0.0.1:8000). Jangan membuka file HTML secara langsung; halaman membutuhkan backend. Database SQLite lokal berada di `~\.brewclub\customers.sqlite3`.
+Buka [http://127.0.0.1:8000](http://127.0.0.1:8000). Jangan membuka file HTML secara langsung; halaman membutuhkan backend. SQLite lokal tersimpan di `%USERPROFILE%\.brewclub\customers.sqlite3`, atau gunakan `BREWCLUB_DATABASE` untuk menentukan lokasi lain.
 
 Jalankan pengujian dengan:
 
 ```powershell
-$env:PYTHONDONTWRITEBYTECODE = "1"
-python -m unittest backend.test_server -v
+npm.cmd test
 ```
 
 ## Login pelanggan dan admin
 
-Pelanggan baru mendaftar dengan email, kata sandi minimal 12 karakter, dan persetujuan Kebijakan Privasi. Sesi login tersimpan di SQLite dan berlaku selama 8 jam, termasuk setelah server dimulai ulang. Akun pelanggan lama dapat menggunakan **Lupa kata sandi** untuk membuat kata sandi.
+Pelanggan mendaftar dengan email, kata sandi minimal 12 karakter, dan persetujuan Kebijakan Privasi. Sesi login tersimpan di database dan berlaku selama 8 jam. Setiap pelanggan mendapat QR Code PNG yang tersimpan di database. Akun pelanggan dari database SQLite lama tetap dapat masuk; aplikasi menambahkan kolom skema yang diperlukan secara otomatis.
 
-Reset kata sandi lewat email memerlukan akun Resend dan konfigurasi `RESEND_API_KEY`, `EMAIL_FROM`, serta `BASE_URL`. Tanpa konfigurasi tersebut, pemulihan email tidak tersedia. Pastikan identitas pengelola dan kontak pada [privacy.html](./privacy.html) benar sebelum situs dibuka ke publik.
+Reset kata sandi melalui email membutuhkan `RESEND_API_KEY`, `EMAIL_FROM`, dan `BASE_URL`. Token reset dikirim sebagai fragmen URL agar tidak dikirim ke server melalui access log. Tanpa konfigurasi email, pemulihan kata sandi tidak tersedia. Pastikan identitas pengelola dan kontak pada [privacy.html](./public/privacy.html) benar sebelum situs dibuka ke publik.
 
-Panel admin tersedia di `/admin.html`. Atur `ADMIN_USERNAME` dan `ADMIN_PASSWORD` sebelum server dijalankan. Gunakan kata sandi unik dan jangan menyimpan file `.env` ke Git.
+Panel admin tersedia di `/admin.html`. Atur `ADMIN_USERNAME` dan `ADMIN_PASSWORD` sebagai environment variable. Gunakan kata sandi unik, minimal 16 karakter untuk akun admin, dan jangan menyimpan file `.env` ke Git.
 
-Setiap pelanggan mendapat QR Code standar yang memuat ID Member. Gambar PNG QR disimpan pada tabel pelanggan di SQLite; kartu member menampilkan gambar dari sesi pelanggan yang sedang masuk. QR pelanggan lama dibuat otomatis saat database dimigrasikan. Kasir dapat memindai QR untuk membaca ID Member, lalu mencari pelanggan di panel admin.
+Fitur admin mencakup pengelolaan promo dan masa berlakunya, pencatatan klaim kasir, analitik klaim, pencarian pelanggan, serta ekspor CSV.
 
-Fitur admin meliputi pengelolaan promo dan masa berlakunya, status promo, pencatatan klaim kasir, analitik klaim, pencarian pelanggan, serta ekspor CSV.
+## Deploy ke Vercel
 
-## Deploy ke Render
+1. Push repository ke GitHub, lalu impor repository tersebut dari Vercel. Root proyek sudah berisi `vercel.json`, function API Node.js, dan aset website pada `public/`.
+2. Buat database Turso/libSQL yang persisten, lalu tambahkan environment variable berikut di **Project Settings → Environment Variables**:
+   - `TURSO_DATABASE_URL` — URL database Turso.
+   - `TURSO_AUTH_TOKEN` — token akses database.
+   - `ADMIN_USERNAME` dan `ADMIN_PASSWORD` — kredensial admin unik; gunakan kata sandi acak minimal 16 karakter.
+   - `BASE_URL` — URL HTTPS website Vercel.
+   - `RESEND_API_KEY` dan `EMAIL_FROM` — opsional, diperlukan untuk reset password lewat email.
+3. Deploy dan verifikasi `/api/health`, pendaftaran/login, QR, dan `/admin.html`.
 
-1. Unggah hanya file proyek BrewClub ke repository GitHub; jangan ikutkan `.env`, database SQLite, atau folder backup.
-2. Pada Render, pilih **New → Web Service**, lalu hubungkan repository.
-3. Pilih runtime **Python** dan isi:
-   - **Build Command:** `pip install -r requirements.txt`
-   - **Start Command:** `python backend/server.py`
-   - **Health Check Path:** `/api/health`
-   - **Instance Type:** Free untuk demo.
-4. Tambahkan environment variables:
-   - `NODE_ENV` = `production`
-   - `ADMIN_USERNAME` = username admin pilihan Anda
-   - `ADMIN_PASSWORD` = kata sandi unik minimal 12 karakter
-   - `BASE_URL` = alamat HTTPS Render setelah deploy, misalnya `https://nama-app.onrender.com`
-   - `TRUST_PROXY` = `1`
-   - Untuk reset kata sandi email: `RESEND_API_KEY` dan `EMAIL_FROM`.
-5. Setelah deploy, periksa `https://nama-app.onrender.com/api/health`, lalu buka `/admin.html`.
+Vercel mewajibkan Turso karena filesystem function tidak persisten. Jangan memakai SQLite lokal untuk menyimpan data produksi di Vercel. Migrasi database SQLite lokal ke Turso harus dilakukan sebagai proses impor terpisah; buat backup dan verifikasi jumlah data sebelum mengalihkan aplikasi. Simpan token Turso dan kredensial admin hanya di environment variables, jangan di repository.
 
-**Paket gratis Render hanya untuk demo.** Aplikasi akan tidur setelah periode tanpa trafik dan filesystem bersifat sementara; database SQLite dapat hilang saat restart, deploy, atau server tidur. Jangan masukkan data pelanggan sungguhan pada layanan gratis ini.
+## Deploy menggunakan Docker Compose
 
-## Deploy dengan Docker Compose
-
-Deploy ini menjalankan Python di jaringan internal Compose dan Caddy sebagai reverse proxy HTTPS. Dibutuhkan server dengan Docker Engine/Compose, domain dengan DNS yang mengarah ke server, serta port TCP 80/443 yang dapat dijangkau dari internet.
+Deploy ini menjalankan backend Node.js pada jaringan internal Compose dan Caddy sebagai reverse proxy HTTPS. Dibutuhkan server dengan Docker Engine/Compose, domain yang DNS-nya mengarah ke server, serta port TCP 80/443 yang dapat dijangkau dari internet.
 
 1. Salin `.env.example` menjadi `.env`, lalu isi `BREWCLUB_DOMAIN`, `BASE_URL`, kredensial admin acak, serta konfigurasi Resend jika diperlukan.
-2. Pastikan DNS dan firewall domain/server siap.
-3. Jalankan:
+2. Pastikan DNS dan firewall siap, kemudian jalankan:
 
    ```sh
    docker compose up -d --build
@@ -71,43 +59,32 @@ Deploy ini menjalankan Python di jaringan internal Compose dan Caddy sebagai rev
    docker compose logs -f app caddy
    ```
 
-4. Buka `https://<domain>` dan periksa `/api/health`. Jangan mengekspos port 8000 langsung ke internet.
+3. Buka `https://<domain>` dan periksa `/api/health`. Jangan mengekspos port 8000 langsung ke internet.
 
 Caddy mengurus sertifikat TLS otomatis setelah DNS dan port tersedia. Data SQLite disimpan di volume Docker `brewclub-data`; sertifikat dan konfigurasi Caddy juga disimpan di volume persisten. Menghapus volume Docker dapat menghapus data pelanggan.
 
-### Memindahkan database lokal ke deploy Docker
+Untuk memakai database SQLite lama di Docker, hentikan app sebelum menyalin database ke volume yang benar. Jangan menimpa database yang sudah berisi pendaftaran produksi. Buat dan verifikasi backup sebelum migrasi.
 
-Cadangkan database lokal terlebih dahulu. Setelah layanan dimulai pertama kali, hentikan app, salin database lama ke container, lalu jalankan kembali:
+## Backup database SQLite lokal
 
-```sh
-docker compose stop app
-docker compose cp /path/ke/customers.sqlite3 app:/app/data/customers.sqlite3
-docker compose start app
-```
-
-Ganti path dengan lokasi absolut file database lokal. Jangan menimpa database yang sudah berisi pendaftaran produksi.
-
-## Backup dan pemulihan
-
-Backup manual lokal:
+Atur `BREWCLUB_DATABASE` ke database lokal, lalu jalankan:
 
 ```powershell
 $env:BREWCLUB_DATABASE = "$HOME\.brewclub\customers.sqlite3"
-python scripts\backup.py .\backups
+npm.cmd run backup -- .\backups
 ```
 
 Di Docker:
 
 ```sh
-docker compose exec app python scripts/backup.py /backups
+docker compose exec app npm run backup -- /backups
 ```
 
-Direktori `backups` pada host dipasang ke `/backups` di container. Salin backup secara berkala ke penyimpanan lain yang aksesnya dibatasi; backup di server yang sama bukan pengganti backup off-site. Skrip menggunakan SQLite backup API dan memeriksa integritas berkas hasil.
+Backup menggunakan SQLite `VACUUM INTO` dan memeriksa integritas berkas hasil. Perintah ini hanya untuk database SQLite lokal, bukan database Turso. Simpan backup secara berkala ke media terpisah yang aksesnya dibatasi; backup di server yang sama bukan pengganti backup off-site.
 
 ## Catatan operasional
 
-- Database produksi sebaiknya hanya dapat diakses melalui aplikasi, bukan file web.
-- Server web hanya menyajikan daftar file HTML, CSS, JavaScript, dan logo yang diizinkan. File database, backup, konfigurasi, dan source backend tidak tersedia sebagai aset publik.
-- Lindungi akses panel admin dan akun hosting; buat backup berkala dan uji pemulihannya.
-- Kebijakan privasi yang disertakan masih perlu dilengkapi dengan identitas badan usaha, kontak, masa retensi, dan praktik yang benar-benar dijalankan.
+- Server hanya menyajikan file web yang diizinkan dari folder `public/`; file database, backup, konfigurasi, dan source backend tidak tersedia sebagai aset publik.
+- Batasi akses panel admin dan akun hosting; buat backup berkala dan uji pemulihannya.
+- Kebijakan privasi yang disertakan perlu dilengkapi dengan identitas badan usaha, kontak, masa retensi, dan praktik yang benar-benar dijalankan.
 - Deploy publik tetap memerlukan domain, akun hosting, DNS, dan kredensial email yang dikelola pemilik.

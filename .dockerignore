@@ -1,0 +1,12 @@
+.git
+.env
+.env.*
+!.env.example
+backups
+data
+node_modules
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+__pycache__
+.streamlit
