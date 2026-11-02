@@ -35,7 +35,7 @@ Fitur admin mencakup pengelolaan promo dan masa berlakunya, pencatatan klaim kas
 
 ## Deploy ke Vercel
 
-1. Push repository ke GitHub, lalu impor repository tersebut dari Vercel. Root proyek sudah berisi `vercel.json`, function API Node.js, dan aset website pada `public/`.
+1. Push repository ke GitHub, lalu impor repository tersebut dari Vercel. Root proyek sudah berisi `vercel.json`, satu function API bersama dengan rewrite untuk seluruh rute `/api/*`, dan aset website pada `public/`.
 2. Buat database Turso/libSQL yang persisten, lalu tambahkan environment variable berikut di **Project Settings → Environment Variables**:
    - `TURSO_DATABASE_URL` — URL database Turso.
    - `TURSO_AUTH_TOKEN` — token akses database.

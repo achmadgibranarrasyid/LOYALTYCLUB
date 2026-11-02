@@ -619,7 +619,12 @@ async function sendPasswordResetEmail(email, token) {
     }),
     signal: AbortSignal.timeout(10_000),
   });
-  if (!response.ok) throw new Error(`Layanan email menolak reset kata sandi (${response.status}).`);
+  if (!response.ok) {
+    throw Object.assign(
+      new Error(`Layanan email menolak reset kata sandi (${response.status}). Periksa konfigurasi Resend dan alamat pengirim.`),
+      { status: 502 },
+    );
+  }
 }
 
 async function registerCustomer(client, req, res) {
@@ -722,6 +727,7 @@ async function forgotPassword(client, req, res) {
       await client.execute("DELETE FROM password_reset_tokens WHERE token_hash = ?", [tokenHash]);
       if (error.status) return sendError(res, error.status, error.message);
       console.error("Gagal mengirim email pemulihan kata sandi:", error.message);
+      return sendError(res, 502, "Email reset gagal dikirim. Periksa konfigurasi Resend dan coba lagi.");
     }
   }
   sendJson(res, 202, { message: "Jika email terdaftar, tautan pengaturan ulang akan dikirim." });
@@ -986,7 +992,16 @@ function createHandler(client, options = {}) {
     try {
       if (!initialized) initialized = initializeDatabase(client);
       await initialized;
-      const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+      let url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+      if (options.vercelPathQueryParameter && url.pathname === "/api/index") {
+        const vercelPath = url.searchParams.get(options.vercelPathQueryParameter);
+        if (vercelPath !== null) {
+          url.searchParams.delete(options.vercelPathQueryParameter);
+          const routePath = `/api/${vercelPath.replace(/^\/+/, "")}`;
+          req.url = `${routePath}${url.search}`;
+          url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+        }
+      }
       if (url.pathname.startsWith("/api/")) {
         await handleApi(client, req, res);
       } else if (options.allowStatic) {

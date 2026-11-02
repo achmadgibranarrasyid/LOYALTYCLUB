@@ -32,7 +32,10 @@ function close(server, client) {
 test("API, QR membership, admin claims, and static-file allowlist work", async (t) => {
   const client = createDatabaseClient({ databaseUrl: "file::memory:" });
   await initializeDatabase(client);
-  const app = http.createServer(createHandler(client, { allowStatic: true }));
+  const app = http.createServer(createHandler(client, {
+    allowStatic: true,
+    vercelPathQueryParameter: "__vercel_path",
+  }));
   const origin = await listen(app);
   const originalEnv = {
     NODE_ENV: process.env.NODE_ENV,
@@ -93,6 +96,10 @@ test("API, QR membership, admin claims, and static-file allowlist work", async (
   assert.equal(noOrigin.response.status, 403);
   const unauthenticatedAdmin = await request("/api/admin/customers");
   assert.equal(unauthenticatedAdmin.response.status, 401);
+
+  const rewrittenAdminSession = await request("/api/index?__vercel_path=admin/session");
+  assert.equal(rewrittenAdminSession.response.status, 200);
+  assert.deepEqual(rewrittenAdminSession.body, { authenticated: false, username: null });
 
   const registration = await request("/api/customers", {
     method: "POST",
@@ -213,6 +220,67 @@ test("Vercel requires persistent Turso credentials", () => {
     () => createDatabaseClient({ databaseUrl: "libsql://db.example", env: {} }),
     /TURSO_AUTH_TOKEN wajib untuk database Turso jarak jauh/,
   );
+});
+
+test("password reset only reports success after the email provider accepts the message", async (t) => {
+  const client = createDatabaseClient({ databaseUrl: "file::memory:" });
+  await initializeDatabase(client);
+  const customer = await client.execute({
+    sql: `INSERT INTO customers (member_id, name, email, phone, joined)
+          VALUES (?, ?, ?, ?, ?) RETURNING id`,
+    args: ["BC-RESET-EMAIL", "Reset Email", "reset-email@example.invalid", "08123456789", Date.now()],
+  });
+  const app = http.createServer(createHandler(client));
+  const origin = await listen(app);
+  const originalEnv = {
+    BASE_URL: process.env.BASE_URL,
+    EMAIL_FROM: process.env.EMAIL_FROM,
+    RESEND_API_KEY: process.env.RESEND_API_KEY,
+  };
+  const originalFetch = globalThis.fetch;
+  process.env.BASE_URL = origin;
+  process.env.EMAIL_FROM = "BrewClub <verified@example.com>";
+  process.env.RESEND_API_KEY = "test-resend-key";
+  t.after(async () => {
+    globalThis.fetch = originalFetch;
+    Object.entries(originalEnv).forEach(([key, value]) => {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    });
+    await close(app, client);
+  });
+
+  let providerStatus = 200;
+  let deliveredEmail;
+  globalThis.fetch = async (url, options) => {
+    if (url !== "https://api.resend.com/emails") return originalFetch(url, options);
+    deliveredEmail = JSON.parse(options.body);
+    return new Response(providerStatus === 200 ? '{"id":"email-test"}' : '{"message":"domain not verified"}', {
+      status: providerStatus,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  const request = () => originalFetch(`${origin}/api/customer/forgot-password`, {
+    method: "POST",
+    headers: { Origin: origin, "Content-Type": "application/json" },
+    body: JSON.stringify({ email: "reset-email@example.invalid" }),
+  });
+
+  const success = await request();
+  assert.equal(success.status, 202);
+  assert.equal(deliveredEmail.to[0], "reset-email@example.invalid");
+  assert.match(deliveredEmail.text, /reset-password\.html#token=/);
+  const savedToken = await client.execute("SELECT token_hash FROM password_reset_tokens");
+  assert.equal(savedToken.rows.length, 1);
+
+  providerStatus = 403;
+  const failure = await request();
+  assert.equal(failure.status, 502);
+  assert.match((await failure.json()).error, /Periksa konfigurasi Resend/);
+  const clearedToken = await client.execute("SELECT COUNT(*) AS count FROM password_reset_tokens");
+  assert.equal(Number(clearedToken.rows[0].count), 1);
+  const remainingToken = await client.execute("SELECT token_hash FROM password_reset_tokens");
+  assert.equal(remainingToken.rows[0].token_hash, savedToken.rows[0].token_hash);
 });
 
 test("legacy SQLite customer and promo tables are migrated without losing member data", async () => {
