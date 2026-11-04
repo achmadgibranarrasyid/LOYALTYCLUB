@@ -104,10 +104,116 @@
 
     <section class="admin-section">
       <div class="admin-section-heading">
-        <div><h2>Catat klaim promo</h2><p class="admin-muted">Catat transaksi promo setelah digunakan pelanggan di kasir.</p></div>
+        <div><h2>Aturan poin</h2><p class="admin-muted">Atur nilai transaksi, bonus klaim, dan batas poin per transaksi.</p></div>
+      </div>
+      <form class="admin-panel form loyalty-settings-form" id="loyaltySettingsForm">
+        <div class="admin-price-fields">
+          <div><label for="purchaseAmountPerPoint">Belanja untuk mendapatkan poin (Rp)</label><input id="purchaseAmountPerPoint" type="number" min="1" max="100000000" required></div>
+          <div><label for="pointsPerPurchaseStep">Poin per kenaikan belanja (0 untuk nonaktif)</label><input id="pointsPerPurchaseStep" type="number" min="0" max="100000" required></div>
+          <div><label for="pointsPerClaim">Poin per klaim promo (0 untuk nonaktif)</label><input id="pointsPerClaim" type="number" min="0" max="100000" required></div>
+          <div><label for="maxPointsPerPurchase">Maksimal poin per transaksi (0 untuk tanpa batas)</label><input id="maxPointsPerPurchase" type="number" min="0" max="100000000" required></div>
+        </div>
+        <button class="btn btn-primary" type="submit">Simpan aturan poin</button>
+        <p class="err" id="loyaltySettingsError" role="alert"></p>
+      </form>
+    </section>
+
+    <section class="admin-section">
+      <div class="admin-section-heading">
+        <div><h2>Kelola reward</h2><p class="admin-muted">Buat reward minuman gratis, diskon, atau reward khusus beserta biaya poinnya.</p></div>
+      </div>
+      <p class="err" id="rewardError" role="alert"></p>
+      <div class="loyalty-reward-layout">
+        <div class="admin-promo-list" id="rewardList" aria-live="polite"></div>
+        <form class="admin-panel form admin-promo-form" id="rewardForm">
+          <h3 id="rewardFormTitle">Tambah reward</h3>
+          <input type="hidden" id="rewardId">
+          <label for="rewardType">Jenis reward</label>
+          <select id="rewardType" required>
+            <option value="free_drink">Minuman gratis</option>
+            <option value="discount">Diskon nominal</option>
+            <option value="custom">Reward khusus</option>
+          </select>
+          <label for="rewardName">Nama reward</label>
+          <input id="rewardName" maxlength="100" required>
+          <label for="rewardDescription">Keterangan (opsional)</label>
+          <textarea id="rewardDescription" maxlength="240" rows="2"></textarea>
+          <label for="rewardPointsCost">Poin yang dibutuhkan</label>
+          <input id="rewardPointsCost" type="number" min="1" max="1000000" required>
+          <div id="rewardDiscountField" class="hidden">
+            <label for="rewardDiscountAmount">Nilai diskon (Rp)</label>
+            <input id="rewardDiscountAmount" type="number" min="1" max="100000000">
+          </div>
+          <div class="admin-form-actions">
+            <button class="btn btn-primary" type="submit">Simpan reward</button>
+            <button class="btn btn-ghost hidden" id="cancelRewardEdit" type="button">Batal</button>
+          </div>
+          <p class="err" id="rewardFormError" role="alert"></p>
+        </form>
+      </div>
+    </section>
+
+    <section class="admin-section">
+      <div class="admin-section-heading">
+        <div><h2>Transaksi dan penyesuaian poin</h2><p class="admin-muted">Catat poin belanja, koreksi saldo, atau tukarkan reward melalui kasir.</p></div>
+      </div>
+      <div class="loyalty-operations">
+        <form class="admin-panel form" id="purchasePointsForm">
+          <h3>Catat transaksi belanja</h3>
+          <label for="purchaseCustomer">Pelanggan</label>
+          <select id="purchaseCustomer" required></select>
+          <label for="purchaseAmount">Nilai transaksi (Rp)</label>
+          <input id="purchaseAmount" type="number" min="1" max="1000000000" required>
+          <button class="btn btn-primary full" type="submit">Tambahkan poin belanja</button>
+          <p class="err" id="purchasePointsError" role="alert"></p>
+        </form>
+        <form class="admin-panel form" id="adjustPointsForm">
+          <h3>Penyesuaian manual</h3>
+          <label for="adjustCustomer">Pelanggan</label>
+          <select id="adjustCustomer" required></select>
+          <label for="adjustAction">Tindakan</label>
+          <select id="adjustAction"><option value="add">Tambahkan poin</option><option value="deduct">Kurangi poin</option></select>
+          <label for="adjustPoints">Jumlah poin</label>
+          <input id="adjustPoints" type="number" min="1" max="1000000" required>
+          <label for="adjustReason">Alasan</label>
+          <input id="adjustReason" maxlength="200" required>
+          <button class="btn btn-primary full" type="submit">Simpan penyesuaian</button>
+          <p class="err" id="adjustPointsError" role="alert"></p>
+        </form>
+        <form class="admin-panel form" id="redeemRewardForm">
+          <h3>Tukarkan reward</h3>
+          <label for="redeemCustomer">Pelanggan</label>
+          <select id="redeemCustomer" required></select>
+          <label for="redeemReward">Reward aktif</label>
+          <select id="redeemReward" required></select>
+          <button class="btn btn-primary full" type="submit">Tukarkan poin</button>
+          <p class="err" id="redeemRewardError" role="alert"></p>
+        </form>
+      </div>
+      <div class="admin-section-heading points-ledger-heading">
+        <div><h3>Riwayat transaksi poin</h3><p class="admin-muted">200 transaksi poin terbaru untuk audit admin.</p></div>
+      </div>
+      <p class="err" id="pointTransactionsError" role="alert"></p>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead><tr><th>Waktu</th><th>Pelanggan</th><th>ID Member</th><th>Aktivitas</th><th>Poin</th></tr></thead>
+          <tbody id="pointTransactionRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="admin-section">
+      <div class="admin-section-heading">
+        <div><h2>Catat klaim promo</h2><p class="admin-muted">Pelanggan cukup menyebutkan nama atau nomor telepon; ID member tidak perlu dihafal.</p></div>
       </div>
       <form class="claim-entry-form" id="claimForm">
-        <div><label for="claimCustomer">Pelanggan</label><select id="claimCustomer" required></select></div>
+        <div class="claim-customer-field">
+          <label for="claimCustomerSearch">Cari nama atau nomor telepon</label>
+          <input id="claimCustomerSearch" type="search" autocomplete="off" placeholder="Contoh: Andi atau 0812..." aria-autocomplete="list" aria-controls="claimCustomerResults" aria-expanded="false">
+          <input id="claimCustomer" type="hidden">
+          <div id="claimCustomerResults" class="claim-customer-results hidden" role="listbox" aria-label="Hasil pencarian pelanggan"></div>
+          <p id="claimCustomerSelection" class="claim-customer-selection" aria-live="polite"></p>
+        </div>
         <div><label for="claimPromo">Promo</label><select id="claimPromo" required></select></div>
         <button class="btn btn-primary" type="submit">Catat klaim</button>
       </form>
@@ -132,7 +238,7 @@
       <p class="err" id="customerError" role="alert"></p>
       <div class="admin-table-wrap">
         <table class="admin-table">
-          <thead><tr><th>ID Member</th><th>Nama</th><th>Email</th><th>WhatsApp</th><th>Bergabung</th></tr></thead>
+          <thead><tr><th>ID Member</th><th>Nama</th><th>Email</th><th>WhatsApp</th><th>Bergabung</th><th>Poin</th></tr></thead>
           <tbody id="customerRows"></tbody>
         </table>
       </div>

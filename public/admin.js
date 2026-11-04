@@ -1,5 +1,16 @@
 const $ = (selector, element = document) => element.querySelector(selector);
 let customerSearchTimer;
+let claimCustomerSearchTimer;
+let claimCustomerSearchSequence = 0;
+let adminToastTimer;
+
+function notifyAdmin(message, type = 'success') {
+  const toast = $('#toast');
+  toast.textContent = message;
+  toast.className = `show ${type}`;
+  clearTimeout(adminToastTimer);
+  adminToastTimer = setTimeout(() => { toast.className = ''; }, 3000);
+}
 
 async function adminRequest(url, options = {}) {
   const response = await fetch(url, {
@@ -52,6 +63,36 @@ function resetPromoForm() {
   $('#promoFormTitle').textContent = 'Tambah promo';
   $('#cancelPromoEdit').classList.add('hidden');
   $('#promoFormError').textContent = '';
+}
+
+function resetRewardForm() {
+  $('#rewardForm').reset();
+  $('#rewardId').value = '';
+  $('#rewardFormTitle').textContent = 'Tambah reward';
+  $('#cancelRewardEdit').classList.add('hidden');
+  $('#rewardFormError').textContent = '';
+  updateRewardDiscountField();
+}
+
+function updateRewardDiscountField() {
+  const isDiscount = $('#rewardType').value === 'discount';
+  $('#rewardDiscountField').classList.toggle('hidden', !isDiscount);
+  $('#rewardDiscountAmount').required = isDiscount;
+  if (!isDiscount) $('#rewardDiscountAmount').value = '';
+}
+
+function editReward(reward) {
+  $('#rewardId').value = reward.id;
+  $('#rewardType').value = reward.type;
+  $('#rewardName').value = reward.name;
+  $('#rewardDescription').value = reward.description;
+  $('#rewardPointsCost').value = reward.points_cost;
+  $('#rewardDiscountAmount').value = reward.discount_amount || '';
+  $('#rewardFormTitle').textContent = 'Edit reward';
+  $('#cancelRewardEdit').classList.remove('hidden');
+  $('#rewardFormError').textContent = '';
+  updateRewardDiscountField();
+  $('#rewardForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 function editPromo(promo) {
@@ -149,7 +190,7 @@ function renderCustomers(customers, search = '') {
       document.createElement('td'),
       search ? 'Tidak ada pelanggan yang cocok dengan pencarian.' : 'Belum ada pelanggan terdaftar.'
     );
-    cell.colSpan = 5;
+    cell.colSpan = 6;
     row.append(cell);
     rows.append(row);
     return;
@@ -161,43 +202,190 @@ function renderCustomers(customers, search = '') {
       customer.name,
       customer.email,
       customer.phone,
-      new Date(customer.joined).toLocaleDateString('id-ID', { dateStyle: 'medium' })
+      new Date(Number(customer.joined)).toLocaleDateString('id-ID', { dateStyle: 'medium' }),
+      Number(customer.points_balance).toLocaleString('id-ID')
     ].forEach(value => row.append(setText(document.createElement('td'), value)));
     rows.append(row);
   });
 }
 
 function updateClaimOptions(customers, promos) {
-  const customerSelect = $('#claimCustomer');
   const promoSelect = $('#claimPromo');
-  const previousCustomer = customerSelect.value;
   const previousPromo = promoSelect.value;
-  customerSelect.replaceChildren();
   promoSelect.replaceChildren();
 
-  const chooseCustomer = new Option('Pilih pelanggan', '');
   const choosePromo = new Option('Pilih promo yang berlaku', '');
-  chooseCustomer.disabled = true;
   choosePromo.disabled = true;
-  chooseCustomer.selected = true;
   choosePromo.selected = true;
-  customerSelect.append(chooseCustomer);
   promoSelect.append(choosePromo);
-  customers.forEach(customer => {
-    customerSelect.add(new Option(`${customer.name} · ${customer.member_id}`, customer.member_id));
-  });
   promos.filter(promo => promo.active && isPromoCurrent(promo)).forEach(promo => {
     promoSelect.add(new Option(`${promo.title} · ${promo.label}`, String(promo.id)));
   });
-  if ([...customerSelect.options].some(option => option.value === previousCustomer)) {
-    customerSelect.value = previousCustomer;
-  }
   if ([...promoSelect.options].some(option => option.value === previousPromo)) {
     promoSelect.value = previousPromo;
   }
-  $('#claimForm button[type="submit"]').disabled = customers.length === 0 || !promos.some(
+  $('#claimForm button[type="submit"]').disabled = !$('#claimCustomer').value || !promos.some(
     promo => promo.active && isPromoCurrent(promo)
   );
+
+  ['#purchaseCustomer', '#adjustCustomer', '#redeemCustomer'].forEach(selector => {
+    const select = $(selector);
+    const previous = select.value;
+    select.replaceChildren(new Option('Pilih pelanggan', ''));
+    select.options[0].disabled = true;
+    select.options[0].selected = true;
+    customers.forEach(customer => {
+      select.add(new Option(`${customer.name} · ${customer.member_id} · ${Number(customer.points_balance).toLocaleString('id-ID')} poin`, customer.member_id));
+    });
+    if ([...select.options].some(option => option.value === previous)) select.value = previous;
+  });
+}
+
+function updateClaimSubmitState() {
+  $('#claimForm button[type="submit"]').disabled = !$('#claimCustomer').value || !$('#claimPromo').value;
+}
+
+function clearClaimCustomerSelection() {
+  claimCustomerSearchSequence += 1;
+  $('#claimCustomer').value = '';
+  $('#claimCustomerSelection').textContent = '';
+  $('#claimCustomerResults').replaceChildren();
+  $('#claimCustomerResults').classList.add('hidden');
+  $('#claimCustomerSearch').setAttribute('aria-expanded', 'false');
+  updateClaimSubmitState();
+}
+
+function selectClaimCustomer(customer) {
+  clearTimeout(claimCustomerSearchTimer);
+  claimCustomerSearchSequence += 1;
+  $('#claimCustomer').value = customer.member_id;
+  $('#claimCustomerSearch').value = `${customer.name} · ${customer.phone}`;
+  $('#claimCustomerSelection').textContent = `Member dipilih: ${customer.name} · ${customer.phone}`;
+  $('#claimCustomerResults').replaceChildren();
+  $('#claimCustomerResults').classList.add('hidden');
+  $('#claimCustomerSearch').setAttribute('aria-expanded', 'false');
+  $('#claimError').textContent = '';
+  updateClaimSubmitState();
+}
+
+function renderClaimCustomerResults(customers, search) {
+  const results = $('#claimCustomerResults');
+  results.replaceChildren();
+  if (!customers.length) {
+    const empty = setText(document.createElement('p'), `Member dengan nama atau nomor “${search}” tidak ditemukan.`);
+    empty.className = 'claim-customer-empty';
+    results.append(empty);
+  } else {
+    customers.forEach(customer => {
+      const option = createAdminButton(
+        `${customer.name} · ${customer.phone}`,
+        'claim-customer-option',
+        () => selectClaimCustomer(customer)
+      );
+      option.setAttribute('role', 'option');
+      results.append(option);
+    });
+  }
+  results.classList.remove('hidden');
+  $('#claimCustomerSearch').setAttribute('aria-expanded', 'true');
+}
+
+async function searchClaimCustomers() {
+  const search = $('#claimCustomerSearch').value.trim();
+  const requestId = ++claimCustomerSearchSequence;
+  if (search.length < 2) {
+    $('#claimCustomerResults').replaceChildren();
+    $('#claimCustomerResults').classList.add('hidden');
+    $('#claimCustomerSearch').setAttribute('aria-expanded', 'false');
+    return;
+  }
+  try {
+    const customers = await adminRequest(`/api/admin/claim-customers?q=${encodeURIComponent(search)}`);
+    if (requestId !== claimCustomerSearchSequence) return;
+    renderClaimCustomerResults(customers, search);
+  } catch (error) {
+    if (requestId === claimCustomerSearchSequence) $('#claimError').textContent = error.message;
+  }
+}
+
+function renderLoyaltySettings(settings) {
+  $('#purchaseAmountPerPoint').value = settings.purchase_amount_per_point;
+  $('#pointsPerPurchaseStep').value = settings.points_per_purchase_step;
+  $('#pointsPerClaim').value = settings.points_per_claim;
+  $('#maxPointsPerPurchase').value = settings.max_points_per_purchase;
+}
+
+function updateRewardOptions(rewards) {
+  const select = $('#redeemReward');
+  const previous = select.value;
+  select.replaceChildren(new Option('Pilih reward', ''));
+  select.options[0].disabled = true;
+  select.options[0].selected = true;
+  rewards.filter(reward => reward.active).forEach(reward => {
+    const discount = reward.type === 'discount'
+      ? ` · Diskon Rp${Number(reward.discount_amount).toLocaleString('id-ID')}`
+      : '';
+    select.add(new Option(`${reward.name} · ${Number(reward.points_cost).toLocaleString('id-ID')} poin${discount}`, String(reward.id)));
+  });
+  if ([...select.options].some(option => option.value === previous)) select.value = previous;
+}
+
+function renderRewards(rewards) {
+  const list = $('#rewardList');
+  list.replaceChildren();
+  if (!rewards.length) {
+    list.append(setText(document.createElement('p'), 'Belum ada reward. Tambahkan reward baru.'));
+    updateRewardOptions(rewards);
+    return;
+  }
+  rewards.forEach(reward => {
+    const card = document.createElement('article');
+    card.className = 'admin-promo-item';
+    const details = document.createElement('div');
+    const title = setText(document.createElement('strong'), reward.name);
+    const kind = reward.type === 'free_drink' ? 'Minuman gratis' : reward.type === 'discount' ? 'Diskon' : 'Reward khusus';
+    const meta = setText(document.createElement('p'), `${kind} · ${Number(reward.points_cost).toLocaleString('id-ID')} poin`);
+    const description = setText(
+      document.createElement('p'),
+      reward.type === 'discount'
+        ? `Diskon Rp${Number(reward.discount_amount).toLocaleString('id-ID')}${reward.description ? ` · ${reward.description}` : ''}`
+        : reward.description
+    );
+    const status = setText(document.createElement('span'), reward.active ? 'Aktif' : 'Nonaktif');
+    status.className = `admin-status ${reward.active ? 'is-active' : ''}`;
+    details.append(title, meta, description, status);
+    const actions = document.createElement('div');
+    actions.className = 'admin-promo-actions';
+    actions.append(
+      createAdminButton('Edit', 'btn btn-ghost', () => editReward(reward)),
+      createAdminButton(reward.active ? 'Nonaktifkan' : 'Aktifkan', 'btn btn-ghost', async () => {
+        try {
+          await adminRequest(`/api/admin/rewards/${reward.id}/active`, {
+            method: 'PATCH',
+            body: JSON.stringify({ active: !reward.active })
+          });
+          await loadDashboard();
+          $('#rewardError').textContent = '';
+        } catch (error) {
+          $('#rewardError').textContent = error.message;
+        }
+      }),
+      createAdminButton('Hapus', 'btn btn-ghost danger', async () => {
+        if (!window.confirm(`Hapus reward "${reward.name}"?`)) return;
+        try {
+          await adminRequest(`/api/admin/rewards/${reward.id}`, { method: 'DELETE' });
+          resetRewardForm();
+          await loadDashboard();
+          $('#rewardError').textContent = '';
+        } catch (error) {
+          $('#rewardError').textContent = error.message;
+        }
+      })
+    );
+    card.append(details, actions);
+    list.append(card);
+  });
+  updateRewardOptions(rewards);
 }
 
 function renderClaims(claims) {
@@ -219,6 +407,35 @@ function renderClaims(claims) {
       claim.member_id,
       claim.promo_title
     ].forEach(value => row.append(setText(document.createElement('td'), value)));
+    rows.append(row);
+  });
+}
+
+function renderPointsTransactions(transactions) {
+  const rows = $('#pointTransactionRows');
+  rows.replaceChildren();
+  if (!transactions.length) {
+    const row = document.createElement('tr');
+    const cell = setText(document.createElement('td'), 'Belum ada transaksi poin.');
+    cell.colSpan = 5;
+    row.append(cell);
+    rows.append(row);
+    return;
+  }
+  transactions.forEach(transaction => {
+    const row = document.createElement('tr');
+    const points = setText(
+      document.createElement('td'),
+      `${Number(transaction.points_delta) > 0 ? '+' : ''}${Number(transaction.points_delta).toLocaleString('id-ID')}`
+    );
+    points.className = Number(transaction.points_delta) > 0 ? 'points-earned' : 'points-spent';
+    [
+      new Date(Number(transaction.created_at)).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }),
+      transaction.customer_name || 'Pelanggan dihapus',
+      transaction.member_id,
+      transaction.description
+    ].forEach(value => row.append(setText(document.createElement('td'), value)));
+    row.append(points);
     rows.append(row);
   });
 }
@@ -281,15 +498,36 @@ async function loadCustomers() {
 async function loadDashboard() {
   const search = $('#customerSearch').value.trim();
   const customerQuery = search ? `?q=${encodeURIComponent(search)}` : '';
-  const [promoResult, customerResult, claimResult, analyticsResult] = await Promise.allSettled([
+  const [promoResult, customerResult, claimResult, analyticsResult, settingsResult, rewardsResult, pointsResult] = await Promise.allSettled([
     adminRequest('/api/admin/promos'),
     adminRequest('/api/admin/customers'),
     adminRequest('/api/admin/claims'),
-    adminRequest('/api/admin/analytics')
+    adminRequest('/api/admin/analytics'),
+    adminRequest('/api/admin/loyalty-settings'),
+    adminRequest('/api/admin/rewards'),
+    adminRequest('/api/admin/points/transactions')
   ]);
   const customers = customerResult.status === 'fulfilled' ? customerResult.value : [];
   const promos = promoResult.status === 'fulfilled' ? promoResult.value : [];
   updateClaimOptions(customers, promos);
+  if (settingsResult.status === 'fulfilled') {
+    renderLoyaltySettings(settingsResult.value);
+    $('#loyaltySettingsError').textContent = '';
+  } else {
+    $('#loyaltySettingsError').textContent = settingsResult.reason.message;
+  }
+  if (rewardsResult.status === 'fulfilled') {
+    renderRewards(rewardsResult.value);
+    $('#rewardError').textContent = '';
+  } else {
+    $('#rewardError').textContent = rewardsResult.reason.message;
+  }
+  if (pointsResult.status === 'fulfilled') {
+    renderPointsTransactions(pointsResult.value);
+    $('#pointTransactionsError').textContent = '';
+  } else {
+    $('#pointTransactionsError').textContent = pointsResult.reason.message;
+  }
   if (promoResult.status === 'fulfilled') {
     renderPromos(promos);
     $('#promoError').textContent = '';
@@ -346,6 +584,136 @@ $('#adminLoginForm').addEventListener('submit', async event => {
   }
 });
 
+$('#loyaltySettingsForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const error = $('#loyaltySettingsError');
+  const button = $('#loyaltySettingsForm button[type="submit"]');
+  button.disabled = true;
+  error.textContent = '';
+  try {
+    await adminRequest('/api/admin/loyalty-settings', {
+      method: 'POST',
+      body: JSON.stringify({
+        purchase_amount_per_point: Number($('#purchaseAmountPerPoint').value),
+        points_per_purchase_step: Number($('#pointsPerPurchaseStep').value),
+        points_per_claim: Number($('#pointsPerClaim').value),
+        max_points_per_purchase: Number($('#maxPointsPerPurchase').value)
+      })
+    });
+    notifyAdmin('Aturan poin berhasil disimpan.');
+  } catch (requestError) {
+    error.textContent = requestError.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$('#rewardForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const error = $('#rewardFormError');
+  const button = $('#rewardForm button[type="submit"]');
+  const id = $('#rewardId').value;
+  const type = $('#rewardType').value;
+  button.disabled = true;
+  error.textContent = '';
+  try {
+    await adminRequest(id ? `/api/admin/rewards/${id}` : '/api/admin/rewards', {
+      method: id ? 'PUT' : 'POST',
+      body: JSON.stringify({
+        type,
+        name: $('#rewardName').value,
+        description: $('#rewardDescription').value,
+        points_cost: Number($('#rewardPointsCost').value),
+        discount_amount: type === 'discount' ? Number($('#rewardDiscountAmount').value) : 0
+      })
+    });
+    resetRewardForm();
+    await loadDashboard();
+    notifyAdmin('Reward berhasil disimpan.');
+  } catch (requestError) {
+    error.textContent = requestError.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$('#purchasePointsForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const error = $('#purchasePointsError');
+  const button = $('#purchasePointsForm button[type="submit"]');
+  button.disabled = true;
+  error.textContent = '';
+  try {
+    const result = await adminRequest('/api/admin/points/earn', {
+      method: 'POST',
+      body: JSON.stringify({
+        member_id: $('#purchaseCustomer').value,
+        amount: Number($('#purchaseAmount').value)
+      })
+    });
+    $('#purchaseAmount').value = '';
+    await loadDashboard();
+    notifyAdmin(`${Number(result.points_awarded).toLocaleString('id-ID')} poin ditambahkan dari transaksi.`);
+  } catch (requestError) {
+    error.textContent = requestError.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$('#adjustPointsForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const error = $('#adjustPointsError');
+  const button = $('#adjustPointsForm button[type="submit"]');
+  button.disabled = true;
+  error.textContent = '';
+  try {
+    const result = await adminRequest('/api/admin/points/adjust', {
+      method: 'POST',
+      body: JSON.stringify({
+        member_id: $('#adjustCustomer').value,
+        action: $('#adjustAction').value,
+        points: Number($('#adjustPoints').value),
+        reason: $('#adjustReason').value
+      })
+    });
+    $('#adjustPoints').value = '';
+    $('#adjustReason').value = '';
+    await loadDashboard();
+    notifyAdmin(`Saldo poin diperbarui menjadi ${Number(result.points_balance).toLocaleString('id-ID')}.`);
+  } catch (requestError) {
+    error.textContent = requestError.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$('#redeemRewardForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const error = $('#redeemRewardError');
+  const button = $('#redeemRewardForm button[type="submit"]');
+  const rewardName = $('#redeemReward').selectedOptions[0]?.textContent || 'reward ini';
+  if (!window.confirm(`Tukarkan poin pelanggan untuk ${rewardName}?`)) return;
+  button.disabled = true;
+  error.textContent = '';
+  try {
+    const result = await adminRequest('/api/admin/rewards/redeem', {
+      method: 'POST',
+      body: JSON.stringify({
+        member_id: $('#redeemCustomer').value,
+        reward_id: Number($('#redeemReward').value)
+      })
+    });
+    await loadDashboard();
+    notifyAdmin(`${Number(result.points_spent).toLocaleString('id-ID')} poin berhasil ditukarkan.`);
+  } catch (requestError) {
+    error.textContent = requestError.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$('#rewardType').addEventListener('change', updateRewardDiscountField);
 $('#promoForm').addEventListener('submit', async event => {
   event.preventDefault();
   const error = $('#promoFormError');
@@ -391,18 +759,38 @@ $('#claimForm').addEventListener('submit', async event => {
       })
     });
     $('#claimCustomer').selectedIndex = 0;
+    $('#claimCustomer').value = '';
+    $('#claimCustomerSearch').value = '';
+    $('#claimCustomerSelection').textContent = '';
+    $('#claimCustomerResults').replaceChildren();
+    $('#claimCustomerResults').classList.add('hidden');
+    $('#claimCustomerSearch').setAttribute('aria-expanded', 'false');
+    claimCustomerSearchSequence += 1;
     $('#claimPromo').selectedIndex = 0;
     await loadDashboard();
   } catch (error) {
     $('#claimError').textContent = error.message;
   } finally {
-    button.disabled = !$('#claimCustomer').value || !$('#claimPromo').value;
+    updateClaimSubmitState();
   }
 });
 
-['#claimCustomer', '#claimPromo'].forEach(selector => {
+$('#claimCustomerSearch').addEventListener('input', () => {
+  clearClaimCustomerSelection();
+  clearTimeout(claimCustomerSearchTimer);
+  claimCustomerSearchTimer = setTimeout(searchClaimCustomers, 250);
+});
+
+$('#claimCustomerSearch').addEventListener('keydown', event => {
+  if (event.key === 'Escape') {
+    $('#claimCustomerResults').classList.add('hidden');
+    $('#claimCustomerSearch').setAttribute('aria-expanded', 'false');
+  }
+});
+
+['#claimCustomerSearch', '#claimPromo'].forEach(selector => {
   $(selector).addEventListener('change', () => {
-    $('#claimForm button[type="submit"]').disabled = !$('#claimCustomer').value || !$('#claimPromo').value;
+    updateClaimSubmitState();
   });
 });
 
@@ -412,6 +800,7 @@ $('#customerSearch').addEventListener('input', () => {
 });
 
 $('#cancelPromoEdit').addEventListener('click', resetPromoForm);
+$('#cancelRewardEdit').addEventListener('click', resetRewardForm);
 $('#newPromo').addEventListener('click', () => {
   resetPromoForm();
   $('#promoForm').scrollIntoView({ behavior: 'smooth', block: 'center' });

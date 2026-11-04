@@ -6,16 +6,27 @@ const $  = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 
 function getUser() {
-  try { return JSON.parse(localStorage.getItem(STORE_KEY)) || null; }
+  try {
+    const savedUser = localStorage.getItem(STORE_KEY) || localStorage.getItem('brewclub_v2');
+    if (!savedUser) return null;
+    const user = JSON.parse(savedUser) || null;
+    if (user && !localStorage.getItem(STORE_KEY)) {
+      localStorage.setItem(STORE_KEY, JSON.stringify(user));
+      localStorage.removeItem('brewclub_v2');
+    }
+    return user;
+  }
   catch { return null; }
 }
 
 function saveUser(user) {
   localStorage.setItem(STORE_KEY, JSON.stringify(user));
+  localStorage.removeItem('brewclub_v2');
 }
 
 function removeUser() {
   localStorage.removeItem(STORE_KEY);
+  localStorage.removeItem('brewclub_v2');
 }
 
 /* =========================================================
@@ -58,7 +69,7 @@ function bindPromoClaims() {
     btn.addEventListener('click', () => {
       if (getUser()) {
         toast('Mengalihkan ke kartu member...', 'success');
-        setTimeout(() => { window.location.href = 'pengguna.html'; }, 500);
+        setTimeout(() => { window.location.href = 'akun.html'; }, 500);
       } else {
         openPromoLogin();
       }
@@ -193,7 +204,7 @@ function initIndexPage() {
       closeAuth();
       renderUserState();
       toast('Berhasil masuk!', 'success');
-      setTimeout(() => { window.location.href = 'pengguna.html'; }, 800);
+      setTimeout(() => { window.location.href = 'akun.html'; }, 800);
     } catch (error) {
       $('#loginErr').textContent = error.message;
     }
@@ -214,7 +225,7 @@ function initIndexPage() {
       closeAuth();
       renderUserState();
       toast('Pendaftaran berhasil!', 'success');
-      setTimeout(() => { window.location.href = 'pengguna.html'; }, 800);
+      setTimeout(() => { window.location.href = 'akun.html'; }, 800);
     } catch (err) {
       error.textContent = err.message;
     } finally {

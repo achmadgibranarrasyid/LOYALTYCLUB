@@ -1,4 +1,5 @@
-const STORE_KEY = 'brewclub_v2';
+const STORE_KEY = 'brewclub_v3';
+const LEGACY_STORE_KEY = 'brewclub_v2';
 
 // Utility
 const $ = (s, el = document) => el.querySelector(s);
@@ -6,12 +7,22 @@ const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 
 // Auth Logic
 function getUser() {
-  try { return JSON.parse(localStorage.getItem(STORE_KEY)) || null; }
+  try {
+    const savedUser = localStorage.getItem(STORE_KEY) || localStorage.getItem(LEGACY_STORE_KEY);
+    if (!savedUser) return null;
+    const user = JSON.parse(savedUser) || null;
+    if (user && !localStorage.getItem(STORE_KEY)) {
+      localStorage.setItem(STORE_KEY, JSON.stringify(user));
+      localStorage.removeItem(LEGACY_STORE_KEY);
+    }
+    return user;
+  }
   catch { return null; }
 }
 
 function saveUser(user) {
   localStorage.setItem(STORE_KEY, JSON.stringify(user));
+  localStorage.removeItem(LEGACY_STORE_KEY);
 }
 
 async function logoutUser() {
@@ -22,6 +33,7 @@ async function logoutUser() {
     return;
   }
   localStorage.removeItem(STORE_KEY);
+  localStorage.removeItem(LEGACY_STORE_KEY);
   window.location.href = 'index.html';
 }
 
@@ -51,6 +63,8 @@ function updateNav() {
   // Logout buttons
   const mmLogout = $('#mmLogout');
   if (mmLogout) mmLogout.addEventListener('click', logoutUser);
+  const btnLogout = $('#btnLogout');
+  if (btnLogout) btnLogout.addEventListener('click', logoutUser);
 }
 
 // Toast Notification

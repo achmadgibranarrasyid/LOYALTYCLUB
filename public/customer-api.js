@@ -57,6 +57,11 @@ async function getCustomerSession() {
   return readCustomerResponse(response);
 }
 
+async function getCustomerLoyalty() {
+  const response = await fetch('/api/customer/loyalty', { credentials: 'same-origin' });
+  return readCustomerResponse(response);
+}
+
 async function logoutCustomer() {
   const response = await fetch('/api/customer/logout', {
     method: 'POST',

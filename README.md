@@ -1,19 +1,21 @@
 # BrewClub
 
-Website loyalty BrewClub dengan backend Node.js, database SQLite/Turso, autentikasi pelanggan, QR member, dan panel admin untuk mengelola promo serta pelanggan.
+Website loyalty BrewClub dengan backend Node.js, database SQLite/Turso, autentikasi pelanggan, QR member, poin/reward, promo, dan panel admin.
 
 ## Menjalankan secara lokal
 
-Dibutuhkan Node.js 22 atau lebih baru.
+Dibutuhkan Node.js 22.x.
 
 PowerShell:
 
 ```powershell
-npm.cmd install
+npm.cmd ci
 $env:ADMIN_USERNAME = "admin"
-$env:ADMIN_PASSWORD = "gunakan-kata-sandi-kuat-minimal-16-karakter"
+$env:ADMIN_PASSWORD = "CHANGE_ME"
 npm.cmd start
 ```
+
+Ganti `CHANGE_ME` dengan kata sandi acak minimal 16 karakter sebelum menjalankan server; nilai contoh akan ditolak oleh backend.
 
 Buka [http://127.0.0.1:8000](http://127.0.0.1:8000). Jangan membuka file HTML secara langsung; halaman membutuhkan backend. SQLite lokal tersimpan di `%USERPROFILE%\.brewclub\customers.sqlite3`, atau gunakan `BREWCLUB_DATABASE` untuk menentukan lokasi lain.
 
@@ -25,13 +27,15 @@ npm.cmd test
 
 ## Login pelanggan dan admin
 
-Pelanggan mendaftar dengan email, kata sandi minimal 12 karakter, dan persetujuan Kebijakan Privasi. Sesi login tersimpan di database dan berlaku selama 8 jam. Setiap pelanggan mendapat QR Code PNG yang tersimpan di database. Akun pelanggan dari database SQLite lama tetap dapat masuk; aplikasi menambahkan kolom skema yang diperlukan secara otomatis.
+Pelanggan mendaftar dengan email, kata sandi minimal 12 karakter, dan persetujuan Kebijakan Privasi. Sesi login tersimpan di database dan berlaku selama 8 jam. Setiap pelanggan mendapat QR Code PNG yang tersimpan di database. Halaman kartu member menampilkan saldo serta riwayat poin, reward aktif, dan promo yang berlaku. Akun pelanggan dari database SQLite lama tetap dapat masuk; aplikasi menambahkan kolom skema yang diperlukan secara otomatis.
 
 Reset kata sandi melalui email membutuhkan `RESEND_API_KEY`, `EMAIL_FROM`, dan `BASE_URL`. Token reset dikirim sebagai fragmen URL agar tidak dikirim ke server melalui access log. Tanpa konfigurasi email, pemulihan kata sandi tidak tersedia. Pastikan identitas pengelola dan kontak pada [privacy.html](./public/privacy.html) benar sebelum situs dibuka ke publik.
 
 Panel admin tersedia di `/admin.html`. Atur `ADMIN_USERNAME` dan `ADMIN_PASSWORD` sebagai environment variable. Gunakan kata sandi unik, minimal 16 karakter untuk akun admin, dan jangan menyimpan file `.env` ke Git.
 
-Fitur admin mencakup pengelolaan promo dan masa berlakunya, pencatatan klaim kasir, analitik klaim, pencarian pelanggan, serta ekspor CSV.
+Fitur admin mencakup pengelolaan promo dan masa berlakunya, pencatatan klaim kasir, pencarian member berdasarkan nama/nomor telepon saat QR bermasalah, analitik klaim, pencarian pelanggan, serta ekspor CSV. Admin dapat mengatur rasio poin transaksi, poin per klaim, dan batas poin per transaksi; poin klaim diberikan otomatis. Transaksi belanja dan koreksi saldo dicatat manual melalui panel. Reward minuman gratis, diskon nominal, dan reward khusus dapat diatur beserta biaya poinnya, lalu ditukarkan oleh admin/kasir dengan saldo pelanggan.
+
+Nilai awal program adalah 1 poin per Rp10.000 transaksi, 1 poin per klaim promo, dan tanpa batas poin per transaksi. Semua nilai tersebut serta biaya dan manfaat reward dapat diubah dari panel admin. Nilai transaksi di bawah ambang tidak menghasilkan poin; akumulasi dihitung per transaksi.
 
 ## Deploy ke Vercel
 

@@ -19,7 +19,7 @@
     </div>
     <div class="nav-actions">
       <a href="index.html" class="btn btn-ghost">Lihat Promo</a>
-      <button class="btn btn-ghost danger" onclick="logoutUser()">Keluar</button>
+      <button class="btn btn-ghost danger" id="btnLogout">Keluar</button>
     </div>
   </div>
 </nav>
@@ -43,21 +43,39 @@
       </div>
     </div>
 
+    <section class="loyalty-account" aria-labelledby="loyaltyHeading">
+      <div class="loyalty-balance">
+        <div>
+          <span class="eyebrow">Loyalty BrewClub</span>
+          <h2 id="loyaltyHeading">Poin member</h2>
+        </div>
+        <p><strong id="pointsBalance">—</strong><span>poin</span></p>
+      </div>
+      <p class="loyalty-copy">Poin didapat dari transaksi dan klaim promo. Tunjukkan kartu member di kasir untuk menukar reward.</p>
+      <p class="err" id="loyaltyError" role="alert"></p>
+      <div class="loyalty-columns">
+        <section>
+          <h3>Reward tersedia</h3>
+          <div id="memberRewards" class="member-rewards" aria-live="polite"></div>
+        </section>
+        <section>
+          <h3>Riwayat poin</h3>
+          <ul id="pointsHistory" class="points-history" aria-live="polite"></ul>
+        </section>
+      </div>
+    </section>
+
     <!-- Panduan -->
     <div class="info-box">
       <h4>Panduan Klaim Promo</h4>
       <p>Tunjukkan QR Code yang berisi ID Member ini ke kasir atau barista untuk mengklaim diskon dan bundling berikut:</p>
-      <ul>
-        <li>Diskon 20% Semua Pastry</li>
-        <li>Diskon 15% Signature Latte</li>
-        <li>Diskon 50% Kopi Kedua (Jumat)</li>
-        <li>Harga Spesial Paket Bundling</li>
-      </ul>
+      <ul id="memberPromos" aria-live="polite"></ul>
+      <p class="err" id="memberPromosError" role="alert"></p>
     </div>
 
     <div class="info-box" style="background:var(--accent-soft); border-color:transparent;">
       <h4 style="color:var(--ink);">Butuh bantuan?</h4>
-      <p>Jika QR Code tidak terbaca, sebutkan <strong>ID Member</strong> kamu ke kasir untuk proses klaim manual.</p>
+      <p>Jika QR Code tidak terbaca, cukup sebutkan <strong>nama atau nomor telepon yang terdaftar</strong>. Kasir dapat mencarikan akunmu tanpa ID Member.</p>
     </div>
   </div>
 </div>
@@ -66,9 +84,93 @@
 <script src="customer-api.js"></script>
 <script src="app.js"></script>
 <script>
+  function renderLoyalty(data) {
+    document.getElementById('pointsBalance').textContent = Number(data.points_balance).toLocaleString('id-ID');
+
+    const rewards = document.getElementById('memberRewards');
+    rewards.replaceChildren();
+    if (!data.rewards.length) {
+      rewards.textContent = 'Belum ada reward aktif.';
+    } else {
+      data.rewards.forEach(reward => {
+        const item = document.createElement('article');
+        item.className = 'member-reward';
+        const title = document.createElement('strong');
+        title.textContent = reward.name;
+        const detail = document.createElement('p');
+        detail.textContent = reward.type === 'discount'
+          ? `Diskon Rp${Number(reward.discount_amount).toLocaleString('id-ID')}${reward.description ? ` · ${reward.description}` : ''}`
+          : reward.description || (reward.type === 'free_drink' ? 'Minuman gratis' : 'Reward khusus');
+        const cost = document.createElement('span');
+        cost.textContent = `${Number(reward.points_cost).toLocaleString('id-ID')} poin`;
+        item.append(title, detail, cost);
+        rewards.append(item);
+      });
+    }
+
+    const history = document.getElementById('pointsHistory');
+    history.replaceChildren();
+    if (!data.transactions.length) {
+      const empty = document.createElement('li');
+      empty.textContent = 'Belum ada aktivitas poin.';
+      history.append(empty);
+      return;
+    }
+    data.transactions.forEach(transaction => {
+      const item = document.createElement('li');
+      const detail = document.createElement('div');
+      const description = document.createElement('strong');
+      description.textContent = transaction.description;
+      const date = document.createElement('small');
+      date.textContent = new Date(Number(transaction.created_at)).toLocaleString('id-ID', {
+        dateStyle: 'medium',
+        timeStyle: 'short'
+      });
+      const points = document.createElement('span');
+      points.className = Number(transaction.points_delta) > 0 ? 'points-earned' : 'points-spent';
+      points.textContent = `${Number(transaction.points_delta) > 0 ? '+' : ''}${Number(transaction.points_delta).toLocaleString('id-ID')}`;
+      detail.append(description, date);
+      item.append(detail, points);
+      history.append(item);
+    });
+  }
+
+  async function loadLoyalty() {
+    try {
+      renderLoyalty(await getCustomerLoyalty());
+      document.getElementById('loyaltyError').textContent = '';
+    } catch (error) {
+      document.getElementById('loyaltyError').textContent = error.message;
+    }
+  }
+
+  async function loadMemberPromos() {
+    try {
+      const response = await fetch('/api/promos');
+      const promos = await response.json();
+      if (!response.ok) throw new Error(promos.error || 'Promo gagal dimuat.');
+      const list = document.getElementById('memberPromos');
+      list.replaceChildren();
+      if (!promos.length) {
+        const empty = document.createElement('li');
+        empty.textContent = 'Belum ada promo aktif.';
+        list.append(empty);
+      }
+      promos.forEach(promo => {
+        const item = document.createElement('li');
+        item.textContent = `${promo.title} — ${promo.description}`;
+        list.append(item);
+      });
+      document.getElementById('memberPromosError').textContent = '';
+    } catch (error) {
+      document.getElementById('memberPromosError').textContent = error.message;
+    }
+  }
+
   // Cek Autentikasi saat halaman dimuat
-  getCustomerSession().then(session => {
+  getCustomerSession().then(async session => {
     if (!session.authenticated || !session.customer) {
+      localStorage.removeItem('brewclub_v3');
       localStorage.removeItem('brewclub_v2');
       window.location.replace('login.html');
       return;
@@ -78,6 +180,8 @@
     document.getElementById('mName').textContent = currentUser.name;
     document.getElementById('mId').textContent = 'ID · ' + currentUser.id;
     document.getElementById('qrCodeImage').src = '/api/customer/qr';
+    await loadLoyalty();
+    await loadMemberPromos();
   }).catch(error => {
     console.error('Sesi pelanggan gagal diverifikasi:', error);
     window.location.replace('login.html');

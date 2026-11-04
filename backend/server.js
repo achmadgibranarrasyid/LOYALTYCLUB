@@ -31,7 +31,13 @@ const PASSWORD_MIN_LENGTH = 12;
 const ADMIN_PASSWORD_MIN_LENGTH = 16;
 const SESSION_DURATION_MS = 8 * 60 * 60 * 1000;
 const RESET_TOKEN_DURATION_MS = 60 * 60 * 1000;
-const PRIVACY_POLICY_VERSION = "2026-11-01";
+const PRIVACY_POLICY_VERSION = "2026-11-04";
+const DEFAULT_LOYALTY_SETTINGS = {
+  purchase_amount_per_point: 10000,
+  points_per_purchase_step: 1,
+  points_per_claim: 1,
+  max_points_per_purchase: 0,
+};
 const RATE_LIMITS = {
   "admin-login": [5, 5 * 60 * 1000],
   "customer-register": [10, 60 * 60 * 1000],
@@ -154,7 +160,8 @@ async function initializeDatabase(client) {
       password_hash TEXT,
       consent_at INTEGER,
       privacy_policy_version TEXT,
-      qr_code BLOB
+      qr_code BLOB,
+      points_balance INTEGER NOT NULL DEFAULT 0
     )`,
     `CREATE TABLE IF NOT EXISTS promos (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -174,6 +181,27 @@ async function initializeDatabase(client) {
       member_id TEXT NOT NULL,
       customer_name TEXT NOT NULL,
       claimed_at INTEGER NOT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS loyalty_transactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      member_id TEXT NOT NULL,
+      type TEXT NOT NULL CHECK (type IN ('purchase', 'promo_claim', 'adjustment', 'redemption')),
+      points_delta INTEGER NOT NULL,
+      description TEXT NOT NULL,
+      purchase_amount INTEGER,
+      reward_id INTEGER,
+      created_at INTEGER NOT NULL
+    )`,
+    "CREATE INDEX IF NOT EXISTS loyalty_transactions_member_time ON loyalty_transactions (member_id, created_at DESC)",
+    `CREATE TABLE IF NOT EXISTS loyalty_rewards (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL CHECK (type IN ('free_drink', 'discount', 'custom')),
+      description TEXT NOT NULL DEFAULT '',
+      points_cost INTEGER NOT NULL CHECK (points_cost > 0),
+      discount_amount INTEGER NOT NULL DEFAULT 0,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL
     )`,
     `CREATE TABLE IF NOT EXISTS auth_sessions (
       token_hash TEXT PRIMARY KEY,
@@ -205,6 +233,7 @@ async function initializeDatabase(client) {
     ["consent_at", "INTEGER"],
     ["privacy_policy_version", "TEXT"],
     ["qr_code", "BLOB"],
+    ["points_balance", "INTEGER NOT NULL DEFAULT 0"],
   ]) {
     if (!existingCustomerColumns.has(column)) {
       try {
@@ -225,6 +254,28 @@ async function initializeDatabase(client) {
       }
     }
   }
+
+  await client.executeMultiple(`
+    CREATE TRIGGER IF NOT EXISTS loyalty_transactions_validate
+    BEFORE INSERT ON loyalty_transactions
+    BEGIN
+      SELECT CASE
+        WHEN NOT EXISTS (SELECT 1 FROM customers WHERE member_id = NEW.member_id)
+        THEN RAISE(ABORT, 'LOYALTY_CUSTOMER_NOT_FOUND')
+      END;
+      SELECT CASE
+        WHEN (SELECT points_balance + NEW.points_delta FROM customers WHERE member_id = NEW.member_id) < 0
+        THEN RAISE(ABORT, 'LOYALTY_INSUFFICIENT_POINTS')
+      END;
+    END;
+    CREATE TRIGGER IF NOT EXISTS loyalty_transactions_apply
+    AFTER INSERT ON loyalty_transactions
+    BEGIN
+      UPDATE customers
+      SET points_balance = points_balance + NEW.points_delta
+      WHERE member_id = NEW.member_id;
+    END;
+  `);
 
   const withoutQr = await client.execute("SELECT id, member_id FROM customers WHERE qr_code IS NULL");
   for (const customer of withoutQr.rows) {
@@ -252,6 +303,10 @@ async function initializeDatabase(client) {
       "INSERT OR IGNORE INTO app_settings (key, value) VALUES ('initial_promos_seeded', '1')",
     );
   }
+  await client.execute({
+    sql: "INSERT OR IGNORE INTO app_settings (key, value) VALUES ('loyalty_settings', ?)",
+    args: [JSON.stringify(DEFAULT_LOYALTY_SETTINGS)],
+  });
   await client.execute("DELETE FROM auth_sessions WHERE expires_at <= ?", [nowMs()]);
   await client.execute(
     "DELETE FROM password_reset_tokens WHERE expires_at <= ? OR used_at IS NOT NULL",
@@ -449,11 +504,83 @@ async function createSession(client, role, { username = null, memberId = null } 
 
 async function createCustomerSessionPayload(client, session) {
   const result = await client.execute({
-    sql: `SELECT member_id AS id, name, email, phone, joined
+    sql: `SELECT member_id AS id, name, email, phone, joined, points_balance
           FROM customers WHERE member_id = ?`,
     args: [session.member_id],
   });
   return result.rows[0] || null;
+}
+
+async function getLoyaltySettings(client) {
+  const result = await client.execute("SELECT value FROM app_settings WHERE key = 'loyalty_settings'");
+  if (result.rows.length === 0) return { ...DEFAULT_LOYALTY_SETTINGS };
+  return validateLoyaltySettings({ ...DEFAULT_LOYALTY_SETTINGS, ...JSON.parse(result.rows[0].value) });
+}
+
+function validateLoyaltySettings(payload) {
+  const settings = {
+    purchase_amount_per_point: payload.purchase_amount_per_point,
+    points_per_purchase_step: payload.points_per_purchase_step,
+    points_per_claim: payload.points_per_claim,
+    max_points_per_purchase: payload.max_points_per_purchase,
+  };
+  if (!Number.isSafeInteger(settings.purchase_amount_per_point)
+    || settings.purchase_amount_per_point < 1
+    || settings.purchase_amount_per_point > 100_000_000
+    || !Number.isSafeInteger(settings.points_per_purchase_step)
+    || settings.points_per_purchase_step < 0
+    || settings.points_per_purchase_step > 100_000
+    || !Number.isSafeInteger(settings.points_per_claim)
+    || settings.points_per_claim < 0
+    || settings.points_per_claim > 100_000
+    || !Number.isSafeInteger(settings.max_points_per_purchase)
+    || settings.max_points_per_purchase < 0
+    || settings.max_points_per_purchase > 100_000_000) {
+    throw Object.assign(new Error("Aturan perolehan poin tidak valid."), { status: 400 });
+  }
+  return settings;
+}
+
+function calculatePurchasePoints(amount, settings) {
+  const earned = Math.floor(amount / settings.purchase_amount_per_point) * settings.points_per_purchase_step;
+  return settings.max_points_per_purchase > 0
+    ? Math.min(earned, settings.max_points_per_purchase)
+    : earned;
+}
+
+function pointsTransactionStatement(memberId, delta, type, description, options = {}) {
+  return {
+    sql: `INSERT INTO loyalty_transactions
+          (member_id, type, points_delta, description, purchase_amount, reward_id, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      memberId,
+      type,
+      delta,
+      description,
+      options.purchaseAmount || null,
+      options.rewardId || null,
+      nowMs(),
+    ],
+  };
+}
+
+async function recordPointsTransaction(client, memberId, delta, type, description, options = {}) {
+  try {
+    const results = await client.batch([
+      pointsTransactionStatement(memberId, delta, type, description, options),
+      { sql: "SELECT points_balance FROM customers WHERE member_id = ?", args: [memberId] },
+    ], "write");
+    return Number(results[1].rows[0].points_balance);
+  } catch (error) {
+    if (error.message.includes("LOYALTY_CUSTOMER_NOT_FOUND")) {
+      throw Object.assign(new Error("Pelanggan tidak ditemukan."), { status: 404 });
+    }
+    if (error.message.includes("LOYALTY_INSUFFICIENT_POINTS")) {
+      throw Object.assign(new Error("Poin pelanggan tidak mencukupi."), { status: 400 });
+    }
+    throw error;
+  }
 }
 
 function csvEscape(value) {
@@ -464,7 +591,7 @@ function csvEscape(value) {
 
 async function sendCustomerCsv(client, res, search) {
   const customers = await customerSearch(client, search);
-  const rows = [["ID Member", "Nama", "Email", "WhatsApp", "Bergabung"]];
+  const rows = [["ID Member", "Nama", "Email", "WhatsApp", "Bergabung", "Poin"]];
   for (const customer of customers) {
     rows.push([
       customer.member_id,
@@ -472,6 +599,7 @@ async function sendCustomerCsv(client, res, search) {
       customer.email,
       customer.phone,
       new Date(Number(customer.joined)).toISOString().slice(0, 10),
+      customer.points_balance,
     ]);
   }
   const body = Buffer.from(`\uFEFF${rows.map((row) => row.map(csvEscape).join(",")).join("\r\n")}`, "utf8");
@@ -489,20 +617,35 @@ async function customerSearch(client, rawSearch) {
   const search = String(rawSearch || "").trim().slice(0, 100);
   if (!search) {
     const result = await client.execute(
-      "SELECT member_id, name, email, phone, joined FROM customers ORDER BY joined DESC",
+      "SELECT member_id, name, email, phone, joined, points_balance FROM customers ORDER BY joined DESC",
     );
     return result.rows;
   }
   const escaped = search.replaceAll("!", "!!").replaceAll("%", "!%").replaceAll("_", "!_");
   const pattern = `%${escaped}%`;
   const result = await client.execute({
-    sql: `SELECT member_id, name, email, phone, joined FROM customers
+    sql: `SELECT member_id, name, email, phone, joined, points_balance FROM customers
           WHERE member_id LIKE ? ESCAPE '!'
              OR name LIKE ? ESCAPE '!'
              OR email LIKE ? ESCAPE '!'
              OR phone LIKE ? ESCAPE '!'
           ORDER BY joined DESC`,
     args: [pattern, pattern, pattern, pattern],
+  });
+  return result.rows;
+}
+
+async function claimCustomerLookup(client, rawSearch) {
+  const search = String(rawSearch || "").trim().slice(0, 100);
+  if (search.length < 2) return [];
+  const escaped = search.replaceAll("!", "!!").replaceAll("%", "!%").replaceAll("_", "!_");
+  const pattern = `%${escaped}%`;
+  const result = await client.execute({
+    sql: `SELECT member_id, name, phone FROM customers
+          WHERE name LIKE ? ESCAPE '!'
+             OR phone LIKE ? ESCAPE '!'
+          ORDER BY name COLLATE NOCASE, joined DESC LIMIT 10`,
+    args: [pattern, pattern],
   });
   return result.rows;
 }
@@ -563,6 +706,63 @@ async function savePromo(client, payload, promoId = null) {
   });
   if (updated.rows.length === 0) throw Object.assign(new Error("Promo tidak ditemukan."), { status: 404 });
   return { status: 200, promo: updated.rows[0] };
+}
+
+async function saveReward(client, payload, rewardId = null) {
+  const name = typeof payload.name === "string" ? payload.name.trim() : "";
+  const description = typeof payload.description === "string" ? payload.description.trim() : "";
+  const type = payload.type;
+  const pointsCost = payload.points_cost;
+  const discountAmount = type === "discount" ? payload.discount_amount : 0;
+  if (!name || name.length > 100 || description.length > 240
+    || !["free_drink", "discount", "custom"].includes(type)
+    || !Number.isSafeInteger(pointsCost) || pointsCost < 1 || pointsCost > 1_000_000
+    || !Number.isSafeInteger(discountAmount) || discountAmount < 0 || discountAmount > 100_000_000
+    || (type === "discount" && discountAmount < 1)) {
+    throw Object.assign(new Error("Nama, tipe, poin, atau nilai reward tidak valid."), { status: 400 });
+  }
+  if (rewardId === null) {
+    const inserted = await client.execute({
+      sql: `INSERT INTO loyalty_rewards (name, type, description, points_cost, discount_amount, created_at)
+            VALUES (?, ?, ?, ?, ?, ?) RETURNING *`,
+      args: [name, type, description, pointsCost, discountAmount, nowMs()],
+    });
+    return { status: 201, reward: inserted.rows[0] };
+  }
+  const updated = await client.execute({
+    sql: `UPDATE loyalty_rewards SET name = ?, type = ?, description = ?, points_cost = ?, discount_amount = ?
+          WHERE id = ? RETURNING *`,
+    args: [name, type, description, pointsCost, discountAmount, rewardId],
+  });
+  if (updated.rows.length === 0) throw Object.assign(new Error("Reward tidak ditemukan."), { status: 404 });
+  return { status: 200, reward: updated.rows[0] };
+}
+
+async function listRewards(client, activeOnly = false) {
+  const result = await client.execute(
+    `SELECT id, name, type, description, points_cost, discount_amount, active
+     FROM loyalty_rewards ${activeOnly ? "WHERE active = 1" : ""}
+     ORDER BY points_cost, id`,
+  );
+  return result.rows;
+}
+
+async function getCustomerLoyalty(client, memberId) {
+  const [customer, transactions, rewards] = await Promise.all([
+    client.execute("SELECT points_balance FROM customers WHERE member_id = ?", [memberId]),
+    client.execute(
+      `SELECT type, points_delta, description, purchase_amount, created_at
+       FROM loyalty_transactions WHERE member_id = ? ORDER BY created_at DESC, id DESC LIMIT 50`,
+      [memberId],
+    ),
+    listRewards(client, true),
+  ]);
+  if (customer.rows.length === 0) throw Object.assign(new Error("Pelanggan tidak ditemukan."), { status: 404 });
+  return {
+    points_balance: Number(customer.rows[0].points_balance),
+    transactions: transactions.rows,
+    rewards,
+  };
 }
 
 async function getAnalytics(client) {
@@ -812,7 +1012,22 @@ async function logout(client, req, res, role) {
 async function handleAdminGet(client, req, res, pathname, query) {
   if (pathname === "/api/admin/promos") return sendJson(res, 200, await listPromos(client, false));
   if (pathname === "/api/admin/customers") return sendJson(res, 200, await customerSearch(client, query.get("q")));
+  if (pathname === "/api/admin/claim-customers") {
+    return sendJson(res, 200, await claimCustomerLookup(client, query.get("q")));
+  }
   if (pathname === "/api/admin/customers.csv") return sendCustomerCsv(client, res, query.get("q"));
+  if (pathname === "/api/admin/loyalty-settings") return sendJson(res, 200, await getLoyaltySettings(client));
+  if (pathname === "/api/admin/rewards") return sendJson(res, 200, await listRewards(client));
+  if (pathname === "/api/admin/points/transactions") {
+    const transactions = await client.execute(
+      `SELECT ledger.member_id, customers.name AS customer_name, ledger.type, ledger.points_delta,
+              ledger.description, ledger.created_at
+       FROM loyalty_transactions AS ledger
+       LEFT JOIN customers ON customers.member_id = ledger.member_id
+       ORDER BY ledger.id DESC LIMIT 200`,
+    );
+    return sendJson(res, 200, transactions.rows);
+  }
   if (pathname === "/api/admin/claims") {
     const claims = await client.execute(
       `SELECT id, promo_id, promo_title, member_id, customer_name, claimed_at
@@ -826,6 +1041,79 @@ async function handleAdminGet(client, req, res, pathname, query) {
 
 async function handleAdminPost(client, req, res, pathname) {
   const payload = await readJson(req);
+  if (pathname === "/api/admin/loyalty-settings") {
+    const settings = validateLoyaltySettings(payload);
+    await client.execute({
+      sql: `INSERT INTO app_settings (key, value) VALUES ('loyalty_settings', ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      args: [JSON.stringify(settings)],
+    });
+    return sendJson(res, 200, settings);
+  }
+  if (pathname === "/api/admin/rewards") {
+    const saved = await saveReward(client, payload);
+    return sendJson(res, saved.status, saved.reward);
+  }
+  if (pathname === "/api/admin/rewards/redeem") {
+    const memberId = typeof payload.member_id === "string" ? payload.member_id.trim() : "";
+    const rewardId = payload.reward_id;
+    if (!memberId || !Number.isSafeInteger(rewardId) || rewardId < 1) {
+      return sendError(res, 400, "Pelanggan dan reward wajib dipilih.");
+    }
+    const result = await client.execute(
+      "SELECT id, name, points_cost FROM loyalty_rewards WHERE id = ? AND active = 1",
+      [rewardId],
+    );
+    const reward = result.rows[0];
+    if (!reward) return sendError(res, 404, "Reward tidak aktif atau tidak ditemukan.");
+    const balance = await recordPointsTransaction(
+      client,
+      memberId,
+      -Number(reward.points_cost),
+      "redemption",
+      `Penukaran reward: ${reward.name}`,
+      { rewardId },
+    );
+    return sendJson(res, 201, { reward_id: rewardId, member_id: memberId, points_spent: Number(reward.points_cost), points_balance: balance });
+  }
+  if (pathname === "/api/admin/points/earn") {
+    const memberId = typeof payload.member_id === "string" ? payload.member_id.trim() : "";
+    const amount = payload.amount;
+    if (!memberId || !Number.isSafeInteger(amount) || amount < 1 || amount > 1_000_000_000) {
+      return sendError(res, 400, "Pelanggan dan nilai transaksi yang valid wajib diisi.");
+    }
+    const settings = await getLoyaltySettings(client);
+    const points = calculatePurchasePoints(amount, settings);
+    if (points < 1) return sendError(res, 400, "Nilai transaksi belum mencapai batas minimum perolehan poin.");
+    const balance = await recordPointsTransaction(
+      client,
+      memberId,
+      points,
+      "purchase",
+      `Poin dari transaksi Rp${amount.toLocaleString("id-ID")}`,
+      { purchaseAmount: amount },
+    );
+    return sendJson(res, 201, { member_id: memberId, amount, points_awarded: points, points_balance: balance });
+  }
+  if (pathname === "/api/admin/points/adjust") {
+    const memberId = typeof payload.member_id === "string" ? payload.member_id.trim() : "";
+    const points = payload.points;
+    const action = payload.action;
+    const reason = typeof payload.reason === "string" ? payload.reason.trim() : "";
+    if (!memberId || !Number.isSafeInteger(points) || points < 1 || points > 1_000_000
+      || !["add", "deduct"].includes(action) || !reason || reason.length > 200) {
+      return sendError(res, 400, "Pelanggan, jumlah poin, tindakan, dan alasan yang valid wajib diisi.");
+    }
+    const delta = action === "add" ? points : -points;
+    const balance = await recordPointsTransaction(
+      client,
+      memberId,
+      delta,
+      "adjustment",
+      `Penyesuaian admin: ${reason}`,
+    );
+    return sendJson(res, 201, { member_id: memberId, points_delta: delta, points_balance: balance });
+  }
   if (pathname === "/api/admin/promos") {
     const saved = await savePromo(client, payload);
     return sendJson(res, saved.status, saved.promo);
@@ -847,19 +1135,31 @@ async function handleAdminPost(client, req, res, pathname) {
     const promo = promoResult.rows[0];
     if (!promo) return sendError(res, 400, "Promo tidak aktif atau di luar masa berlaku.");
     const claimedAt = nowMs();
-    const inserted = await client.execute({
-      sql: `INSERT INTO promo_claims
-            (promo_id, promo_title, member_id, customer_name, claimed_at)
-            VALUES (?, ?, ?, ?, ?) RETURNING id`,
-      args: [promo.id, promo.title, customer.member_id, customer.name, claimedAt],
-    });
+    const settings = await getLoyaltySettings(client);
+    const claimPoints = settings.points_per_claim;
+    const statements = [{
+        sql: `INSERT INTO promo_claims
+              (promo_id, promo_title, member_id, customer_name, claimed_at)
+              VALUES (?, ?, ?, ?, ?) RETURNING id`,
+        args: [promo.id, promo.title, customer.member_id, customer.name, claimedAt],
+      }];
+    if (claimPoints > 0) {
+      statements.push(pointsTransactionStatement(
+        customer.member_id,
+        claimPoints,
+        "promo_claim",
+        `Poin dari klaim promo: ${promo.title}`,
+      ));
+    }
+    const results = await client.batch(statements, "write");
     return sendJson(res, 201, {
-      id: inserted.rows[0].id,
+      id: results[0].rows[0].id,
       promo_id: promo.id,
       promo_title: promo.title,
       member_id: customer.member_id,
       customer_name: customer.name,
       claimed_at: claimedAt,
+      points_awarded: claimPoints,
     });
   }
   return sendError(res, 404, "Endpoint tidak ditemukan.");
@@ -892,6 +1192,11 @@ async function handleApi(client, req, res) {
       customer: session ? await createCustomerSessionPayload(client, session) : null,
     });
   }
+  if (method === "GET" && pathname === "/api/customer/loyalty") {
+    const session = await requireSession(client, req, res, "customer");
+    if (!session) return;
+    return sendJson(res, 200, await getCustomerLoyalty(client, session.member_id));
+  }
   if (method === "GET" && pathname === "/api/customer/qr") {
     const session = await requireSession(client, req, res, "customer");
     if (!session) return;
@@ -920,6 +1225,8 @@ async function handleApi(client, req, res) {
     const methodIsAdminRead = method === "GET";
     const promoMatch = pathname.match(/^\/api\/admin\/promos\/(\d+)$/);
     const activeMatch = pathname.match(/^\/api\/admin\/promos\/(\d+)\/active$/);
+    const rewardMatch = pathname.match(/^\/api\/admin\/rewards\/(\d+)$/);
+    const rewardActiveMatch = pathname.match(/^\/api\/admin\/rewards\/(\d+)\/active$/);
     if (methodIsAdminRead) {
       const session = await requireSession(client, req, res, "admin");
       if (!session) return;
@@ -936,6 +1243,12 @@ async function handleApi(client, req, res) {
       const result = await savePromo(client, await readJson(req), Number(promoMatch[1]));
       return sendJson(res, result.status, result.promo);
     }
+    if (method === "PUT" && rewardMatch) {
+      const session = await requireSession(client, req, res, "admin", true);
+      if (!session) return;
+      const result = await saveReward(client, await readJson(req), Number(rewardMatch[1]));
+      return sendJson(res, result.status, result.reward);
+    }
     if (method === "PATCH" && activeMatch) {
       const session = await requireSession(client, req, res, "admin", true);
       if (!session) return;
@@ -945,11 +1258,30 @@ async function handleApi(client, req, res) {
       if (Number(result.rowsAffected) === 0) return sendError(res, 404, "Promo tidak ditemukan.");
       return sendJson(res, 200, { ok: true });
     }
+    if (method === "PATCH" && rewardActiveMatch) {
+      const session = await requireSession(client, req, res, "admin", true);
+      if (!session) return;
+      const payload = await readJson(req);
+      if (typeof payload.active !== "boolean") return sendError(res, 400, "Status reward tidak valid.");
+      const result = await client.execute(
+        "UPDATE loyalty_rewards SET active = ? WHERE id = ?",
+        [Number(payload.active), Number(rewardActiveMatch[1])],
+      );
+      if (Number(result.rowsAffected) === 0) return sendError(res, 404, "Reward tidak ditemukan.");
+      return sendJson(res, 200, { ok: true });
+    }
     if (method === "DELETE" && promoMatch) {
       const session = await requireSession(client, req, res, "admin", true);
       if (!session) return;
       const result = await client.execute("DELETE FROM promos WHERE id = ?", [Number(promoMatch[1])]);
       if (Number(result.rowsAffected) === 0) return sendError(res, 404, "Promo tidak ditemukan.");
+      return sendJson(res, 200, { ok: true });
+    }
+    if (method === "DELETE" && rewardMatch) {
+      const session = await requireSession(client, req, res, "admin", true);
+      if (!session) return;
+      const result = await client.execute("DELETE FROM loyalty_rewards WHERE id = ?", [Number(rewardMatch[1])]);
+      if (Number(result.rowsAffected) === 0) return sendError(res, 404, "Reward tidak ditemukan.");
       return sendJson(res, 200, { ok: true });
     }
   }
