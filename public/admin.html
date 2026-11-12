@@ -12,7 +12,7 @@
 <body class="admin-page">
 <nav class="nav">
   <div class="nav-inner">
-    <a href="index.html" class="logo" aria-label="MONT Admin"><img class="brand-logo" src="mont-logo.svg" alt="MONT"><span class="admin-label">ADMIN</span></a>
+    <a href="index.html" class="logo" aria-label="MONT Admin"><img class="brand-logo" src="MONT%20NEON%20BOX.png" alt="MONT"><span class="admin-label">ADMIN</span></a>
     <div class="nav-actions">
       <a href="index.html" class="btn btn-ghost">Lihat Website</a>
       <button class="btn btn-ghost danger hidden" id="adminLogout">Keluar</button>
@@ -104,22 +104,6 @@
 
     <section class="admin-section">
       <div class="admin-section-heading">
-        <div><h2>Aturan poin</h2><p class="admin-muted">Atur nilai transaksi, bonus klaim, dan batas poin per transaksi.</p></div>
-      </div>
-      <form class="admin-panel form loyalty-settings-form" id="loyaltySettingsForm">
-        <div class="admin-price-fields">
-          <div><label for="purchaseAmountPerPoint">Belanja untuk mendapatkan poin (Rp)</label><input id="purchaseAmountPerPoint" type="number" min="1" max="100000000" required></div>
-          <div><label for="pointsPerPurchaseStep">Poin per kenaikan belanja (0 untuk nonaktif)</label><input id="pointsPerPurchaseStep" type="number" min="0" max="100000" required></div>
-          <div><label for="pointsPerClaim">Poin per klaim promo (0 untuk nonaktif)</label><input id="pointsPerClaim" type="number" min="0" max="100000" required></div>
-          <div><label for="maxPointsPerPurchase">Maksimal poin per transaksi (0 untuk tanpa batas)</label><input id="maxPointsPerPurchase" type="number" min="0" max="100000000" required></div>
-        </div>
-        <button class="btn btn-primary" type="submit">Simpan aturan poin</button>
-        <p class="err" id="loyaltySettingsError" role="alert"></p>
-      </form>
-    </section>
-
-    <section class="admin-section">
-      <div class="admin-section-heading">
         <div><h2>Kelola reward</h2><p class="admin-muted">Buat reward minuman gratis, diskon, atau reward khusus beserta biaya poinnya.</p></div>
       </div>
       <p class="err" id="rewardError" role="alert"></p>
@@ -155,20 +139,11 @@
 
     <section class="admin-section">
       <div class="admin-section-heading">
-        <div><h2>Transaksi dan penyesuaian poin</h2><p class="admin-muted">Catat poin belanja, koreksi saldo, atau tukarkan reward melalui kasir.</p></div>
+        <div><h2>Poin manual dan reward</h2><p class="admin-muted">Poin hanya berubah melalui penyesuaian manual admin atau penukaran reward.</p></div>
       </div>
       <div class="loyalty-operations">
-        <form class="admin-panel form" id="purchasePointsForm">
-          <h3>Catat transaksi belanja</h3>
-          <label for="purchaseCustomer">Pelanggan</label>
-          <select id="purchaseCustomer" required></select>
-          <label for="purchaseAmount">Nilai transaksi (Rp)</label>
-          <input id="purchaseAmount" type="number" min="1" max="1000000000" required>
-          <button class="btn btn-primary full" type="submit">Tambahkan poin belanja</button>
-          <p class="err" id="purchasePointsError" role="alert"></p>
-        </form>
         <form class="admin-panel form" id="adjustPointsForm">
-          <h3>Penyesuaian manual</h3>
+          <h3>Atur saldo poin</h3>
           <label for="adjustCustomer">Pelanggan</label>
           <select id="adjustCustomer" required></select>
           <label for="adjustAction">Tindakan</label>
@@ -196,7 +171,7 @@
       <p class="err" id="pointTransactionsError" role="alert"></p>
       <div class="admin-table-wrap">
         <table class="admin-table">
-          <thead><tr><th>Waktu</th><th>Pelanggan</th><th>ID Member</th><th>Aktivitas</th><th>Poin</th></tr></thead>
+          <thead><tr><th>Waktu</th><th>Pelanggan</th><th>Aktivitas</th><th>Poin</th></tr></thead>
           <tbody id="pointTransactionRows"></tbody>
         </table>
       </div>
@@ -204,12 +179,12 @@
 
     <section class="admin-section">
       <div class="admin-section-heading">
-        <div><h2>Catat klaim promo</h2><p class="admin-muted">Pelanggan cukup menyebutkan nama atau nomor telepon; ID member tidak perlu dihafal.</p></div>
+        <div><h2>Catat klaim promo</h2><p class="admin-muted">Cari pelanggan berdasarkan nama, nomor telepon, atau email. Klaim promo tidak mengubah poin.</p></div>
       </div>
       <form class="claim-entry-form" id="claimForm">
         <div class="claim-customer-field">
-          <label for="claimCustomerSearch">Cari nama atau nomor telepon</label>
-          <input id="claimCustomerSearch" type="search" autocomplete="off" placeholder="Contoh: Andi atau 0812..." aria-autocomplete="list" aria-controls="claimCustomerResults" aria-expanded="false">
+          <label for="claimCustomerSearch">Cari nama, nomor telepon, atau email</label>
+          <input id="claimCustomerSearch" type="search" autocomplete="off" placeholder="Nama, 0812..., atau email" aria-autocomplete="list" aria-controls="claimCustomerResults" aria-expanded="false">
           <input id="claimCustomer" type="hidden">
           <div id="claimCustomerResults" class="claim-customer-results hidden" role="listbox" aria-label="Hasil pencarian pelanggan"></div>
           <p id="claimCustomerSelection" class="claim-customer-selection" aria-live="polite"></p>
@@ -220,9 +195,56 @@
       <p class="err" id="claimError" role="alert"></p>
       <div class="admin-table-wrap">
         <table class="admin-table">
-          <thead><tr><th>Waktu</th><th>Pelanggan</th><th>ID Member</th><th>Promo</th></tr></thead>
+          <thead><tr><th>Waktu</th><th>Pelanggan</th><th>Promo</th></tr></thead>
           <tbody id="claimRows"></tbody>
         </table>
+      </div>
+    </section>
+
+    <section class="admin-section">
+      <div class="admin-section-heading">
+        <div><h2>Pengaturan tier</h2><p class="admin-muted">Tier pelanggan naik otomatis berdasarkan total nominal transaksi. Bronze dimulai dari Rp0.</p></div>
+      </div>
+      <p class="err" id="tierError" role="alert"></p>
+      <div class="admin-promo-layout">
+        <div class="admin-promo-list" id="tierList" aria-live="polite"></div>
+        <form class="admin-panel form admin-promo-form" id="tierSettingsForm">
+          <h3>Ambang nominal transaksi</h3>
+          <label for="silverMinSpend">Silver mulai dari (Rp)</label>
+          <input id="silverMinSpend" type="number" min="1" max="1000000000000" step="1" required>
+          <label for="goldMinSpend">Gold mulai dari (Rp)</label>
+          <input id="goldMinSpend" type="number" min="1" max="1000000000000" step="1" required>
+          <button class="btn btn-primary" type="submit">Simpan ambang tier</button>
+          <p class="err" id="tierFormError" role="alert"></p>
+        </form>
+      </div>
+    </section>
+
+    <section class="admin-section">
+      <div class="admin-section-heading">
+        <div><h2>Catat nominal transaksi</h2><p class="admin-muted">Transaksi baru menambah total belanja dan memperbarui tier pelanggan otomatis.</p></div>
+      </div>
+      <div class="admin-promo-layout">
+        <form class="admin-panel form admin-promo-form" id="spendForm">
+          <label for="spendCustomer">Pelanggan</label>
+          <select id="spendCustomer" required></select>
+          <label for="spendAmount">Nominal transaksi (Rp)</label>
+          <input id="spendAmount" type="number" min="1" max="1000000000000" step="1" required>
+          <label for="spendDescription">Keterangan (opsional)</label>
+          <input id="spendDescription" maxlength="200" placeholder="Contoh: transaksi di kasir">
+          <button class="btn btn-primary" type="submit">Catat transaksi</button>
+          <p class="err" id="spendError" role="alert"></p>
+        </form>
+        <form class="admin-panel form admin-promo-form" id="spendBaselineForm">
+          <h3>Masukkan total transaksi lama</h3>
+          <p class="admin-muted">Isi total kumulatif saat ini. Nilai ini menggantikan total tercatat dan tidak mengubah poin.</p>
+          <label for="baselineCustomer">Pelanggan</label>
+          <select id="baselineCustomer" required></select>
+          <label for="baselineAmount">Total transaksi historis (Rp)</label>
+          <input id="baselineAmount" type="number" min="0" max="1000000000000" step="1" required>
+          <button class="btn btn-ghost" type="submit">Simpan total historis</button>
+          <p class="err" id="baselineError" role="alert"></p>
+        </form>
       </div>
     </section>
 
@@ -232,13 +254,13 @@
       </div>
       <div class="customer-tools">
         <label class="sr-only" for="customerSearch">Cari pelanggan</label>
-        <input id="customerSearch" type="search" placeholder="Cari nama, email, nomor, atau ID member">
+        <input id="customerSearch" type="search" placeholder="Cari nama, email, atau nomor telepon">
         <a id="exportCustomers" class="btn btn-ghost" href="/api/admin/customers.csv" download>Ekspor CSV</a>
       </div>
       <p class="err" id="customerError" role="alert"></p>
       <div class="admin-table-wrap">
         <table class="admin-table">
-          <thead><tr><th>ID Member</th><th>Nama</th><th>Email</th><th>WhatsApp</th><th>Bergabung</th><th>Poin</th></tr></thead>
+          <thead><tr><th>Nama</th><th>Email</th><th>WhatsApp</th><th>Bergabung</th><th>Total transaksi</th><th>Poin</th><th>Tier</th></tr></thead>
           <tbody id="customerRows"></tbody>
         </table>
       </div>

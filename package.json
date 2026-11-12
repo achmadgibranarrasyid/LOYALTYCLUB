@@ -12,7 +12,6 @@
     "backup": "node scripts/backup.js"
   },
   "dependencies": {
-    "@libsql/client": "^0.15.15",
-    "qrcode": "^1.5.4"
+    "@libsql/client": "^0.15.15"
   }
 }

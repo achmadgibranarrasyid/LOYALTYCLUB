@@ -190,7 +190,7 @@ function renderCustomers(customers, search = '') {
       document.createElement('td'),
       search ? 'Tidak ada pelanggan yang cocok dengan pencarian.' : 'Belum ada pelanggan terdaftar.'
     );
-    cell.colSpan = 6;
+    cell.colSpan = 7;
     row.append(cell);
     rows.append(row);
     return;
@@ -198,14 +198,27 @@ function renderCustomers(customers, search = '') {
   customers.forEach(customer => {
     const row = document.createElement('tr');
     [
-      customer.member_id,
       customer.name,
       customer.email,
       customer.phone,
       new Date(Number(customer.joined)).toLocaleDateString('id-ID', { dateStyle: 'medium' }),
+      `Rp${Number(customer.total_spend).toLocaleString('id-ID')}`,
       Number(customer.points_balance).toLocaleString('id-ID')
     ].forEach(value => row.append(setText(document.createElement('td'), value)));
+    row.append(setText(document.createElement('td'), customer.tier_name || 'Bronze'));
     rows.append(row);
+  });
+}
+
+function updateSpendCustomerOptions(customers) {
+  ['#spendCustomer', '#baselineCustomer'].forEach(selector => {
+    const select = $(selector);
+    const previous = select.value;
+    select.replaceChildren(new Option('Pilih pelanggan', ''));
+    customers.forEach(customer => {
+      select.add(new Option(`${customer.name} · ${customer.phone}`, customer.member_id));
+    });
+    if (customers.some(customer => customer.member_id === previous)) select.value = previous;
   });
 }
 
@@ -228,14 +241,14 @@ function updateClaimOptions(customers, promos) {
     promo => promo.active && isPromoCurrent(promo)
   );
 
-  ['#purchaseCustomer', '#adjustCustomer', '#redeemCustomer'].forEach(selector => {
+  ['#adjustCustomer', '#redeemCustomer'].forEach(selector => {
     const select = $(selector);
     const previous = select.value;
     select.replaceChildren(new Option('Pilih pelanggan', ''));
     select.options[0].disabled = true;
     select.options[0].selected = true;
     customers.forEach(customer => {
-      select.add(new Option(`${customer.name} · ${customer.member_id} · ${Number(customer.points_balance).toLocaleString('id-ID')} poin`, customer.member_id));
+      select.add(new Option(`${customer.name} · ${customer.email} · ${Number(customer.points_balance).toLocaleString('id-ID')} poin`, customer.member_id));
     });
     if ([...select.options].some(option => option.value === previous)) select.value = previous;
   });
@@ -272,13 +285,13 @@ function renderClaimCustomerResults(customers, search) {
   const results = $('#claimCustomerResults');
   results.replaceChildren();
   if (!customers.length) {
-    const empty = setText(document.createElement('p'), `Member dengan nama atau nomor “${search}” tidak ditemukan.`);
+    const empty = setText(document.createElement('p'), `Pelanggan dengan nama, nomor, atau email “${search}” tidak ditemukan.`);
     empty.className = 'claim-customer-empty';
     results.append(empty);
   } else {
     customers.forEach(customer => {
       const option = createAdminButton(
-        `${customer.name} · ${customer.phone}`,
+        `${customer.name} · ${customer.phone} · ${customer.email}`,
         'claim-customer-option',
         () => selectClaimCustomer(customer)
       );
@@ -306,13 +319,6 @@ async function searchClaimCustomers() {
   } catch (error) {
     if (requestId === claimCustomerSearchSequence) $('#claimError').textContent = error.message;
   }
-}
-
-function renderLoyaltySettings(settings) {
-  $('#purchaseAmountPerPoint').value = settings.purchase_amount_per_point;
-  $('#pointsPerPurchaseStep').value = settings.points_per_purchase_step;
-  $('#pointsPerClaim').value = settings.points_per_claim;
-  $('#maxPointsPerPurchase').value = settings.max_points_per_purchase;
 }
 
 function updateRewardOptions(rewards) {
@@ -388,13 +394,36 @@ function renderRewards(rewards) {
   updateRewardOptions(rewards);
 }
 
+function renderTiers(tiers) {
+  const list = $('#tierList');
+  list.replaceChildren();
+  tiers.forEach(tier => {
+    const card = document.createElement('article');
+    card.className = 'admin-promo-item';
+    const details = document.createElement('div');
+    details.append(
+      setText(document.createElement('strong'), tier.name),
+      setText(document.createElement('p'), `Mulai dari Rp${Number(tier.min_spend).toLocaleString('id-ID')}`),
+      setText(document.createElement('p'), `${Number(tier.member_count)} pelanggan`),
+    );
+    card.append(details);
+    list.append(card);
+  });
+  const silver = tiers.find(tier => tier.name === 'Silver');
+  const gold = tiers.find(tier => tier.name === 'Gold');
+  if (silver && gold) {
+    $('#silverMinSpend').value = silver.min_spend;
+    $('#goldMinSpend').value = gold.min_spend;
+  }
+}
+
 function renderClaims(claims) {
   const rows = $('#claimRows');
   rows.replaceChildren();
   if (!claims.length) {
     const row = document.createElement('tr');
     const cell = setText(document.createElement('td'), 'Belum ada klaim yang dicatat.');
-    cell.colSpan = 4;
+    cell.colSpan = 3;
     row.append(cell);
     rows.append(row);
     return;
@@ -404,7 +433,6 @@ function renderClaims(claims) {
     [
       new Date(claim.claimed_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }),
       claim.customer_name,
-      claim.member_id,
       claim.promo_title
     ].forEach(value => row.append(setText(document.createElement('td'), value)));
     rows.append(row);
@@ -417,7 +445,7 @@ function renderPointsTransactions(transactions) {
   if (!transactions.length) {
     const row = document.createElement('tr');
     const cell = setText(document.createElement('td'), 'Belum ada transaksi poin.');
-    cell.colSpan = 5;
+    cell.colSpan = 4;
     row.append(cell);
     rows.append(row);
     return;
@@ -432,7 +460,6 @@ function renderPointsTransactions(transactions) {
     [
       new Date(Number(transaction.created_at)).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }),
       transaction.customer_name || 'Pelanggan dihapus',
-      transaction.member_id,
       transaction.description
     ].forEach(value => row.append(setText(document.createElement('td'), value)));
     row.append(points);
@@ -498,23 +525,24 @@ async function loadCustomers() {
 async function loadDashboard() {
   const search = $('#customerSearch').value.trim();
   const customerQuery = search ? `?q=${encodeURIComponent(search)}` : '';
-  const [promoResult, customerResult, claimResult, analyticsResult, settingsResult, rewardsResult, pointsResult] = await Promise.allSettled([
+  const [promoResult, customerResult, claimResult, analyticsResult, tiersResult, rewardsResult, pointsResult] = await Promise.allSettled([
     adminRequest('/api/admin/promos'),
     adminRequest('/api/admin/customers'),
     adminRequest('/api/admin/claims'),
     adminRequest('/api/admin/analytics'),
-    adminRequest('/api/admin/loyalty-settings'),
+    adminRequest('/api/admin/tiers'),
     adminRequest('/api/admin/rewards'),
     adminRequest('/api/admin/points/transactions')
   ]);
   const customers = customerResult.status === 'fulfilled' ? customerResult.value : [];
   const promos = promoResult.status === 'fulfilled' ? promoResult.value : [];
+  if (customerResult.status === 'fulfilled') updateSpendCustomerOptions(customers);
   updateClaimOptions(customers, promos);
-  if (settingsResult.status === 'fulfilled') {
-    renderLoyaltySettings(settingsResult.value);
-    $('#loyaltySettingsError').textContent = '';
+  if (tiersResult.status === 'fulfilled') {
+    renderTiers(tiersResult.value);
+    $('#tierError').textContent = '';
   } else {
-    $('#loyaltySettingsError').textContent = settingsResult.reason.message;
+    $('#tierError').textContent = tiersResult.reason.message;
   }
   if (rewardsResult.status === 'fulfilled') {
     renderRewards(rewardsResult.value);
@@ -584,25 +612,71 @@ $('#adminLoginForm').addEventListener('submit', async event => {
   }
 });
 
-$('#loyaltySettingsForm').addEventListener('submit', async event => {
+$('#tierSettingsForm').addEventListener('submit', async event => {
   event.preventDefault();
-  const error = $('#loyaltySettingsError');
-  const button = $('#loyaltySettingsForm button[type="submit"]');
+  const error = $('#tierFormError');
+  const button = $('#tierSettingsForm button[type="submit"]');
   button.disabled = true;
   error.textContent = '';
   try {
-    await adminRequest('/api/admin/loyalty-settings', {
+    await adminRequest('/api/admin/tiers/settings', {
       method: 'POST',
       body: JSON.stringify({
-        purchase_amount_per_point: Number($('#purchaseAmountPerPoint').value),
-        points_per_purchase_step: Number($('#pointsPerPurchaseStep').value),
-        points_per_claim: Number($('#pointsPerClaim').value),
-        max_points_per_purchase: Number($('#maxPointsPerPurchase').value)
+        silver_min_spend: Number($('#silverMinSpend').value),
+        gold_min_spend: Number($('#goldMinSpend').value)
       })
     });
-    notifyAdmin('Aturan poin berhasil disimpan.');
+    await loadDashboard();
+    notifyAdmin('Ambang tier berhasil disimpan dan tier pelanggan diperbarui.');
   } catch (requestError) {
     error.textContent = requestError.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$('#spendForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const button = $('#spendForm button[type="submit"]');
+  button.disabled = true;
+  $('#spendError').textContent = '';
+  try {
+    const result = await adminRequest('/api/admin/spend/record', {
+      method: 'POST',
+      body: JSON.stringify({
+        member_id: $('#spendCustomer').value,
+        amount: Number($('#spendAmount').value),
+        description: $('#spendDescription').value
+      })
+    });
+    $('#spendForm').reset();
+    await loadDashboard();
+    notifyAdmin(`Transaksi dicatat. Total belanja Rp${Number(result.total_spend).toLocaleString('id-ID')} · Tier ${result.tier || 'Bronze'}.`);
+  } catch (error) {
+    $('#spendError').textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$('#spendBaselineForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const button = $('#spendBaselineForm button[type="submit"]');
+  button.disabled = true;
+  $('#baselineError').textContent = '';
+  try {
+    const result = await adminRequest('/api/admin/spend/baseline', {
+      method: 'POST',
+      body: JSON.stringify({
+        member_id: $('#baselineCustomer').value,
+        amount: Number($('#baselineAmount').value)
+      })
+    });
+    $('#baselineAmount').value = '';
+    await loadDashboard();
+    notifyAdmin(`Total historis disimpan: Rp${Number(result.total_spend).toLocaleString('id-ID')} · Tier ${result.tier || 'Bronze'}.`);
+  } catch (error) {
+    $('#baselineError').textContent = error.message;
   } finally {
     button.disabled = false;
   }
@@ -630,30 +704,6 @@ $('#rewardForm').addEventListener('submit', async event => {
     resetRewardForm();
     await loadDashboard();
     notifyAdmin('Reward berhasil disimpan.');
-  } catch (requestError) {
-    error.textContent = requestError.message;
-  } finally {
-    button.disabled = false;
-  }
-});
-
-$('#purchasePointsForm').addEventListener('submit', async event => {
-  event.preventDefault();
-  const error = $('#purchasePointsError');
-  const button = $('#purchasePointsForm button[type="submit"]');
-  button.disabled = true;
-  error.textContent = '';
-  try {
-    const result = await adminRequest('/api/admin/points/earn', {
-      method: 'POST',
-      body: JSON.stringify({
-        member_id: $('#purchaseCustomer').value,
-        amount: Number($('#purchaseAmount').value)
-      })
-    });
-    $('#purchaseAmount').value = '';
-    await loadDashboard();
-    notifyAdmin(`${Number(result.points_awarded).toLocaleString('id-ID')} poin ditambahkan dari transaksi.`);
   } catch (requestError) {
     error.textContent = requestError.message;
   } finally {

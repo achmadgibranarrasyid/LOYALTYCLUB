@@ -1,6 +1,6 @@
 # BrewClub
 
-Website loyalty BrewClub dengan backend Node.js, database SQLite/Turso, autentikasi pelanggan, QR member, poin/reward, promo, dan panel admin.
+Website loyalty BrewClub dengan backend Node.js, database SQLite/Turso, autentikasi pelanggan, poin/reward manual, tier berbasis nominal transaksi, promo, dan panel admin.
 
 ## Menjalankan secara lokal
 
@@ -27,15 +27,13 @@ npm.cmd test
 
 ## Login pelanggan dan admin
 
-Pelanggan mendaftar dengan email, kata sandi minimal 12 karakter, dan persetujuan Kebijakan Privasi. Sesi login tersimpan di database dan berlaku selama 8 jam. Setiap pelanggan mendapat QR Code PNG yang tersimpan di database. Halaman kartu member menampilkan saldo serta riwayat poin, reward aktif, dan promo yang berlaku. Akun pelanggan dari database SQLite lama tetap dapat masuk; aplikasi menambahkan kolom skema yang diperlukan secara otomatis.
+Pelanggan mendaftar dengan nama, email, nomor WhatsApp, kata sandi minimal 12 karakter, dan persetujuan Kebijakan Privasi. Sesi login tersimpan di database dan berlaku selama 8 jam. Halaman akun menampilkan identitas kontak, total transaksi, tier dan progres menuju tier selanjutnya, saldo dan riwayat poin, reward aktif, serta promo yang berlaku. Klaim promo dicatat dengan pencarian nama/email/nomor telepon. Akun pelanggan dari database SQLite lama tetap dapat masuk; aplikasi menambahkan kolom skema yang diperlukan dan menghapus kolom QR lama tanpa menghapus data pelanggan.
 
 Reset kata sandi melalui email membutuhkan `RESEND_API_KEY`, `EMAIL_FROM`, dan `BASE_URL`. Token reset dikirim sebagai fragmen URL agar tidak dikirim ke server melalui access log. Tanpa konfigurasi email, pemulihan kata sandi tidak tersedia. Pastikan identitas pengelola dan kontak pada [privacy.html](./public/privacy.html) benar sebelum situs dibuka ke publik.
 
 Panel admin tersedia di `/admin.html`. Atur `ADMIN_USERNAME` dan `ADMIN_PASSWORD` sebagai environment variable. Gunakan kata sandi unik, minimal 16 karakter untuk akun admin, dan jangan menyimpan file `.env` ke Git.
 
-Fitur admin mencakup pengelolaan promo dan masa berlakunya, pencatatan klaim kasir, pencarian member berdasarkan nama/nomor telepon saat QR bermasalah, analitik klaim, pencarian pelanggan, serta ekspor CSV. Admin dapat mengatur rasio poin transaksi, poin per klaim, dan batas poin per transaksi; poin klaim diberikan otomatis. Transaksi belanja dan koreksi saldo dicatat manual melalui panel. Reward minuman gratis, diskon nominal, dan reward khusus dapat diatur beserta biaya poinnya, lalu ditukarkan oleh admin/kasir dengan saldo pelanggan.
-
-Nilai awal program adalah 1 poin per Rp10.000 transaksi, 1 poin per klaim promo, dan tanpa batas poin per transaksi. Semua nilai tersebut serta biaya dan manfaat reward dapat diubah dari panel admin. Nilai transaksi di bawah ambang tidak menghasilkan poin; akumulasi dihitung per transaksi.
+Fitur admin mencakup pengelolaan promo dan masa berlakunya, pencatatan klaim kasir, pencarian member berdasarkan nama/email/nomor telepon, analitik klaim, pencarian pelanggan, serta ekspor CSV. Poin hanya dapat ditambah atau dikurangi manual oleh admin dengan alasan yang tercatat; klaim promo dan transaksi belanja tidak menghasilkan poin otomatis. Tier Bronze, Silver, dan Gold ditetapkan otomatis dari total nominal transaksi kumulatif. Admin dapat mengatur ambang Silver dan Gold, mencatat transaksi baru, atau memasukkan total transaksi historis per pelanggan; perubahan tier mengikuti total belanja dan tidak memengaruhi poin. Riwayat pembelian lama yang memiliki nominal tersimpan dimigrasikan ke total belanja saat skema diperbarui. Reward minuman gratis, diskon nominal, dan reward khusus dapat diatur beserta biaya poinnya, lalu ditukarkan oleh admin/kasir dengan saldo pelanggan.
 
 ## Deploy ke Vercel
 
@@ -46,7 +44,7 @@ Nilai awal program adalah 1 poin per Rp10.000 transaksi, 1 poin per klaim promo,
    - `ADMIN_USERNAME` dan `ADMIN_PASSWORD` — kredensial admin unik; gunakan kata sandi acak minimal 16 karakter.
    - `BASE_URL` — URL HTTPS website Vercel.
    - `RESEND_API_KEY` dan `EMAIL_FROM` — opsional, diperlukan untuk reset password lewat email.
-3. Deploy dan verifikasi `/api/health`, pendaftaran/login, QR, dan `/admin.html`.
+3. Deploy dan verifikasi `/api/health`, pendaftaran/login, pengelolaan poin, ambang tier dan transaksi, serta `/admin.html`.
 
 Vercel mewajibkan Turso karena filesystem function tidak persisten. Jangan memakai SQLite lokal untuk menyimpan data produksi di Vercel. Migrasi database SQLite lokal ke Turso harus dilakukan sebagai proses impor terpisah; buat backup dan verifikasi jumlah data sebelum mengalihkan aplikasi. Simpan token Turso dan kredensial admin hanya di environment variables, jangan di repository.
 

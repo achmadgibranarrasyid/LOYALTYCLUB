@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Kartu Member — BrewClub</title>
+<title>Akun Member — BrewClub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -13,7 +13,7 @@
 
 <nav class="nav">
   <div class="nav-inner">
-    <a href="index.html" class="logo" aria-label="MONT"><img class="brand-logo" src="mont-logo.svg" alt="MONT"></a>
+    <a href="index.html" class="logo" aria-label="MONT"><img class="brand-logo" src="MONT%20NEON%20BOX.png" alt="MONT"></a>
     <div class="nav-links">
       <a href="index.html">Beranda</a>
     </div>
@@ -26,19 +26,19 @@
 
 <div class="page-wrapper">
   <div class="akun-box">
-    <!-- Kartu Digital -->
     <div class="mcard">
       <div class="mcard-top">
-        <img class="brand-logo" src="mont-logo.svg" alt="MONT">
-        <span class="tier-pill">MEMBER AKTIF</span>
+        <img class="brand-logo" src="MONT%20NEON%20BOX.png" alt="MONT">
+        <span class="tier-pill" id="memberTier">MEMBER</span>
       </div>
       <div class="mcard-mid">
-        <img id="qrCodeImage" class="member-qr" alt="QR Code member yang dapat dipindai" width="200" height="200">
-        <div>
+        <div class="member-contact">
           <small>MEMBER</small>
           <strong id="mName">—</strong>
-          <small>ID MEMBER</small>
-          <span id="mId">—</span>
+          <small>EMAIL</small>
+          <span id="mEmail">—</span>
+          <small>TELEPON</small>
+          <span id="mPhone">—</span>
         </div>
       </div>
     </div>
@@ -51,7 +51,10 @@
         </div>
         <p><strong id="pointsBalance">—</strong><span>poin</span></p>
       </div>
-      <p class="loyalty-copy">Poin didapat dari transaksi dan klaim promo. Tunjukkan kartu member di kasir untuk menukar reward.</p>
+      <p class="loyalty-copy">Total transaksi tercatat: <strong id="totalSpend">Rp0</strong></p>
+      <p class="loyalty-copy" id="tierProgress"></p>
+      <p class="loyalty-copy">Saldo poin dikelola manual oleh BrewClub. Untuk mengenali akunmu, sebutkan nama, email, atau nomor telepon terdaftar.</p>
+      <p class="loyalty-tier" id="memberTierDescription"></p>
       <p class="err" id="loyaltyError" role="alert"></p>
       <div class="loyalty-columns">
         <section>
@@ -65,18 +68,13 @@
       </div>
     </section>
 
-    <!-- Panduan -->
     <div class="info-box">
       <h4>Panduan Klaim Promo</h4>
-      <p>Tunjukkan QR Code yang berisi ID Member ini ke kasir atau barista untuk mengklaim diskon dan bundling berikut:</p>
+      <p>Sebutkan nama, email, atau nomor telepon terdaftar kepada kasir atau barista untuk mengklaim diskon dan bundling berikut:</p>
       <ul id="memberPromos" aria-live="polite"></ul>
       <p class="err" id="memberPromosError" role="alert"></p>
     </div>
 
-    <div class="info-box" style="background:var(--accent-soft); border-color:transparent;">
-      <h4 style="color:var(--ink);">Butuh bantuan?</h4>
-      <p>Jika QR Code tidak terbaca, cukup sebutkan <strong>nama atau nomor telepon yang terdaftar</strong>. Kasir dapat mencarikan akunmu tanpa ID Member.</p>
-    </div>
   </div>
 </div>
 
@@ -86,6 +84,15 @@
 <script>
   function renderLoyalty(data) {
     document.getElementById('pointsBalance').textContent = Number(data.points_balance).toLocaleString('id-ID');
+    document.getElementById('totalSpend').textContent = `Rp${Number(data.total_spend).toLocaleString('id-ID')}`;
+    const tier = data.tier;
+    document.getElementById('memberTier').textContent = tier ? tier.name : 'MEMBER';
+    document.getElementById('tierProgress').textContent = data.next_tier
+      ? `Belanja Rp${Number(data.next_tier.min_spend - data.total_spend).toLocaleString('id-ID')} lagi untuk mencapai ${data.next_tier.name}.`
+      : 'Kamu telah mencapai tier tertinggi.';
+    document.getElementById('memberTierDescription').textContent = tier
+      ? tier.description || 'Tier ditentukan otomatis berdasarkan total nominal transaksimu.'
+      : 'Tier belum ditetapkan. Silakan hubungi BrewClub untuk informasi.';
 
     const rewards = document.getElementById('memberRewards');
     rewards.replaceChildren();
@@ -178,8 +185,8 @@
     const currentUser = session.customer;
     saveUser(currentUser);
     document.getElementById('mName').textContent = currentUser.name;
-    document.getElementById('mId').textContent = 'ID · ' + currentUser.id;
-    document.getElementById('qrCodeImage').src = '/api/customer/qr';
+    document.getElementById('mEmail').textContent = currentUser.email;
+    document.getElementById('mPhone').textContent = currentUser.phone;
     await loadLoyalty();
     await loadMemberPromos();
   }).catch(error => {

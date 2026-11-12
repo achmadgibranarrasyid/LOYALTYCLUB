@@ -134,9 +134,7 @@ body:not(.logged-in) .user-only{display:none !important}
 .card-top .brand-logo,.dc-brand .brand-logo{width:128px;max-height:28px;padding:4px 7px;border-radius:6px;background:#fff}
 .tier-pill{font-size:10.5px;font-weight:800;letter-spacing:.12em;padding:5px 12px;border-radius:999px;background:var(--gold);color:var(--ink);white-space:nowrap}
 .card-mid{display:flex;gap:18px;align-items:center;margin-bottom:24px;position:relative;z-index:1}
-.card-qr{background:#fff;border-radius:14px;padding:8px;display:grid;place-items:center;flex-shrink:0}
-.card-qr{width:112px;height:112px;display:grid;place-items:center;text-align:center;color:var(--ink);font-size:13px;font-weight:800;letter-spacing:.08em}
-.member-qr{display:block;width:200px;height:200px;background:#fff;image-rendering:auto}
+.card-profile-mark{width:112px;height:112px;border-radius:18px;background:var(--gold);color:var(--ink);display:grid;place-items:center;flex-shrink:0;font:700 34px 'Playfair Display',serif}
 .card-info small{display:block;font-size:10px;letter-spacing:.14em;color:rgba(255,255,255,.5);font-weight:700;margin-bottom:3px}
 .card-info strong{display:block;font-size:17px;margin-bottom:12px;font-weight:700}
 .card-info span{font-size:13px;letter-spacing:.08em;opacity:.75}
@@ -285,21 +283,6 @@ footer{border-top:1px solid var(--line);padding:48px 0 36px;margin-top:auto}
   background:var(--gold);
   color:var(--ink);
 }
-.dc-qr-wrapper {
-  background: #fff;
-  border-radius: 20px;
-  padding: 16px;
-  display: flex;
-  justify-content: center;
-  margin-bottom: 28px;
-  position: relative;
-  z-index: 1;
-}
-.dc-qr-wrapper .member-qr {
-  width: 200px;
-  height: 200px;
-  display: block;
-}
 .dc-bottom {
   display: flex;
   justify-content: space-between;
@@ -412,7 +395,6 @@ footer{border-top:1px solid var(--line);padding:48px 0 36px;margin-top:auto}
   /* Akun Page Mobile */
   .account-wrapper { padding-top: 24px; gap: 20px; }
   .digital-card { padding: 22px; }
-  .dc-qr-wrapper .member-qr { width: 180px; height: 180px; }
   .dc-bottom strong { font-size: 15px; }
   .page-account .hide-xs { display: none !important; }
 }
@@ -420,7 +402,6 @@ footer{border-top:1px solid var(--line);padding:48px 0 36px;margin-top:auto}
 @media (max-width:380px){
   .hide-xs{display:none}.brand-logo{width:130px;max-height:28px}
   .btn{padding:10px 14px;font-size:13px}
-  .dc-qr-wrapper .member-qr { width: 150px; height: 150px; }
 }
 
 @media (hover:none){
@@ -451,7 +432,7 @@ footer{border-top:1px solid var(--line);padding:48px 0 36px;margin-top:auto}
 .home-page .hero .card-info small,
 .home-page .hero .card-bottom small{color:#43583B}
 .home-page .hero .card-info span{color:var(--ink-soft);opacity:1}
-.home-page .hero .card-qr{
+.home-page .hero .card-profile-mark{
   color:#183313;
   background:#FFFDF5;
   border:1px solid rgba(41,73,31,.2);
@@ -566,6 +547,7 @@ footer{border-top:1px solid var(--line);padding:48px 0 36px;margin-top:auto}
 .admin-table th,.admin-table td{padding:13px 15px;border-bottom:1px solid var(--line);font-size:13px}
 .admin-table th{background:var(--bg);font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
 .admin-table tr:last-child td{border-bottom:0}
+.customer-tier-select{min-height:40px;padding:8px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--ink);font:500 13px 'Plus Jakarta Sans',sans-serif}
 .promo-load-error{grid-column:1/-1;color:var(--danger);font-weight:700}
 .promo-validity{display:block;color:var(--accent-dark);font-size:12px;font-weight:700;margin:-8px 0 14px}
 .admin-page .err{min-height:0}
@@ -639,10 +621,13 @@ footer{border-top:1px solid var(--line);padding:48px 0 36px;margin-top:auto}
 .mcard-top,.mcard-bottom{display:flex;align-items:center;justify-content:space-between;gap:14px}
 .mcard-top{margin-bottom:24px}
 .mcard-top .brand-logo{width:128px;max-height:28px;padding:4px 7px;border-radius:6px;background:#fff}
+.mcard-top #memberTier{max-width:60%;white-space:normal;text-align:center;overflow-wrap:anywhere}
 .mcard-mid{display:flex;align-items:center;gap:20px;margin-bottom:22px}
-.mcard-mid>div:last-child{display:grid;gap:3px;min-width:0}
+.member-contact{display:grid;gap:3px;min-width:0}
 .mcard-mid small,.mcard-bottom small{font-size:10px;letter-spacing:.12em;color:rgba(255,255,255,.62)}
 .mcard-mid strong{font-size:20px;overflow-wrap:anywhere}
+.mcard-mid span{font-size:14px;overflow-wrap:anywhere;margin-bottom:8px}
+.loyalty-tier{font-size:13px;color:var(--muted)}
 .mcard-bottom>div{display:grid}
 .info-box,.loyalty-account{padding:22px;background:var(--surface);border:1px solid var(--line);border-radius:18px}
 .info-box h4,.loyalty-columns h3{margin-bottom:8px}
@@ -668,10 +653,8 @@ footer{border-top:1px solid var(--line);padding:48px 0 36px;margin-top:auto}
 .points-earned,.points-spent{font-weight:800;white-space:nowrap}
 .points-earned{color:var(--green)}
 .points-spent{color:var(--danger)}
-.loyalty-settings-form{max-width:760px}
-.loyalty-settings-form .admin-price-fields{margin-bottom:8px}
 .loyalty-reward-layout{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(280px,.8fr);align-items:start;gap:22px}
-.loyalty-operations{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:start;gap:16px}
+.loyalty-operations{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:16px}
 .loyalty-operations h3{font-size:19px;margin-bottom:8px}
 .loyalty-operations .admin-panel{display:grid;gap:9px}
 .admin-page .form input:not([type="checkbox"]),.admin-page .form select,.admin-page .form textarea{width:100%}
@@ -684,6 +667,5 @@ footer{border-top:1px solid var(--line);padding:48px 0 36px;margin-top:auto}
   .akun-box{margin:24px auto;padding:0 14px 28px}
   .mcard{padding:18px}
   .mcard-mid{gap:12px}
-  .mcard-mid .member-qr{width:min(42vw,160px);height:auto}
   .loyalty-columns{grid-template-columns:1fr}
 }

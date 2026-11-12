@@ -3,7 +3,7 @@
 const assert = require("node:assert/strict");
 const http = require("node:http");
 const test = require("node:test");
-const { createDatabaseClient, createHandler, generateMemberQr, hashPassword, initializeDatabase, verifyPassword } = require("./server");
+const { createDatabaseClient, createHandler, hashPassword, initializeDatabase, verifyPassword } = require("./server");
 
 function listen(server) {
   return new Promise((resolve, reject) => {
@@ -29,7 +29,7 @@ function close(server, client) {
   });
 }
 
-test("API, QR membership, admin claims, and static-file allowlist work", async (t) => {
+test("API, manual loyalty, admin tiers and claims, and static-file allowlist work", async (t) => {
   const client = createDatabaseClient({ databaseUrl: "file::memory:" });
   await initializeDatabase(client);
   const app = http.createServer(createHandler(client, {
@@ -64,11 +64,7 @@ test("API, QR membership, admin claims, and static-file allowlist work", async (
       body: payload === undefined ? undefined : JSON.stringify(payload),
     });
     const contentType = response.headers.get("content-type") || "";
-    const body = contentType.includes("application/json")
-      ? await response.json()
-      : contentType.includes("image/png")
-        ? Buffer.from(await response.arrayBuffer())
-        : await response.text();
+    const body = contentType.includes("application/json") ? await response.json() : await response.text();
     return { response, body };
   };
 
@@ -79,6 +75,27 @@ test("API, QR membership, admin claims, and static-file allowlist work", async (
   const home = await request("/");
   assert.equal(home.response.status, 200);
   assert.match(home.response.headers.get("content-security-policy"), /frame-ancestors 'none'/);
+  assert.doesNotMatch(home.body, /QR Code|QR MEMBER/i);
+  assert.match(home.body, /src="MONT%20NEON%20BOX\.png"/);
+  const logo = await fetch(`${origin}/MONT%20NEON%20BOX.png`);
+  assert.equal(logo.status, 200);
+  assert.equal(logo.headers.get("content-type"), "image/png");
+  assert.deepEqual(
+    [...new Uint8Array(await logo.arrayBuffer()).slice(0, 8)],
+    [137, 80, 78, 71, 13, 10, 26, 10],
+  );
+  const adminPage = await request("/admin.html");
+  assert.equal(adminPage.response.status, 200);
+  assert.match(adminPage.body, /src="MONT%20NEON%20BOX\.png"/);
+  assert.match(adminPage.body, /id="tierSettingsForm"/);
+  assert.match(adminPage.body, /id="spendBaselineForm"/);
+  assert.doesNotMatch(adminPage.body, /id="tierName"|id="tierId"/);
+  const memberAccount = await request("/akun.html");
+  assert.equal(memberAccount.response.status, 200);
+  assert.match(memberAccount.body, /src="MONT%20NEON%20BOX\.png"/);
+  assert.match(memberAccount.body, /id="mEmail"/);
+  assert.match(memberAccount.body, /id="mPhone"/);
+  assert.doesNotMatch(memberAccount.body, /QR Code|qrCodeImage/i);
   const legacyMemberPage = await request("/pengguna.html");
   assert.equal(legacyMemberPage.response.status, 200);
   assert.match(legacyMemberPage.body, /url=akun\.html/);
@@ -99,6 +116,11 @@ test("API, QR membership, admin claims, and static-file allowlist work", async (
   assert.equal(noOrigin.response.status, 403);
   const unauthenticatedAdmin = await request("/api/admin/customers");
   assert.equal(unauthenticatedAdmin.response.status, 401);
+  const unauthenticatedSpend = await request("/api/admin/spend/record", {
+    method: "POST",
+    payload: { member_id: "BC-UNKNOWN", amount: 1000 },
+  });
+  assert.equal(unauthenticatedSpend.response.status, 401);
 
   const rewrittenAdminSession = await request("/api/index?__vercel_path=admin/session");
   assert.equal(rewrittenAdminSession.response.status, 200);
@@ -116,19 +138,15 @@ test("API, QR membership, admin claims, and static-file allowlist work", async (
   });
   assert.equal(registration.response.status, 201);
   assert.match(registration.body.id, /^BC-[A-F0-9]{16}$/);
+  assert.equal(registration.body.email, "node-customer@example.invalid");
+  assert.equal(registration.body.phone, "08123456789");
   const customerCookie = registration.response.headers.get("set-cookie").split(";", 1)[0];
   assert.match(registration.response.headers.get("set-cookie"), /HttpOnly/);
 
-  const qr = await request("/api/customer/qr", { cookie: customerCookie });
-  assert.equal(qr.response.status, 200);
-  assert.equal(qr.response.headers.get("content-type"), "image/png");
-  assert.equal(qr.response.headers.get("cache-control"), "private, no-store");
-  assert.deepEqual(qr.body.subarray(0, 8), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
-  const storedQr = await client.execute({
-    sql: "SELECT qr_code FROM customers WHERE member_id = ?",
-    args: [registration.body.id],
-  });
-  assert.deepEqual(Buffer.from(storedQr.rows[0].qr_code), qr.body);
+  const removedQr = await request("/api/customer/qr", { cookie: customerCookie });
+  assert.equal(removedQr.response.status, 404);
+  const customerColumns = await client.execute("PRAGMA table_info(customers)");
+  assert.equal(customerColumns.rows.some(column => column.name === "qr_code"), false);
 
   const login = await request("/api/customer/login", {
     method: "POST",
@@ -157,6 +175,11 @@ test("API, QR membership, admin claims, and static-file allowlist work", async (
   const adminCustomers = await request("/api/admin/customers?q=node-customer", { cookie: adminCookie });
   assert.equal(adminCustomers.response.status, 200);
   assert.equal(adminCustomers.body.length, 1);
+  assert.equal(adminCustomers.body[0].name, "Node Customer");
+  assert.equal("tier_name" in adminCustomers.body[0], true);
+  const customerCsv = await request("/api/admin/customers.csv", { cookie: adminCookie });
+  assert.match(customerCsv.body, /"Nama","Email","WhatsApp","Bergabung","Total transaksi","Poin","Tier"/);
+  assert.doesNotMatch(customerCsv.body, /ID Member/);
   const unauthenticatedClaimLookup = await request("/api/admin/claim-customers?q=08123456789");
   assert.equal(unauthenticatedClaimLookup.response.status, 401);
   const claimLookupByPhone = await request("/api/admin/claim-customers?q=08123456789", { cookie: adminCookie });
@@ -164,66 +187,98 @@ test("API, QR membership, admin claims, and static-file allowlist work", async (
   assert.deepEqual(claimLookupByPhone.body, [{
     member_id: registration.body.id,
     name: "Node Customer",
+    email: "node-customer@example.invalid",
     phone: "08123456789",
   }]);
+  const claimLookupByEmail = await request("/api/admin/claim-customers?q=node-customer@example.invalid", { cookie: adminCookie });
+  assert.equal(claimLookupByEmail.body[0].email, "node-customer@example.invalid");
   const claimLookupByName = await request("/api/admin/claim-customers?q=Node Customer", { cookie: adminCookie });
   assert.equal(claimLookupByName.response.status, 200);
   assert.equal(claimLookupByName.body[0].name, "Node Customer");
   const tooShortClaimLookup = await request("/api/admin/claim-customers?q=N", { cookie: adminCookie });
   assert.deepEqual(tooShortClaimLookup.body, []);
-  const privateLoyaltySettings = await request("/api/admin/loyalty-settings");
-  assert.equal(privateLoyaltySettings.response.status, 401);
   const privateLoyalty = await request("/api/customer/loyalty");
   assert.equal(privateLoyalty.response.status, 401);
   const emptyLoyalty = await request("/api/customer/loyalty", { cookie: customerCookie });
   assert.equal(emptyLoyalty.response.status, 200);
   assert.equal(emptyLoyalty.body.points_balance, 0);
+  assert.equal(emptyLoyalty.body.total_spend, 0);
+  assert.equal(emptyLoyalty.body.tier.name, "Bronze");
+  assert.equal(emptyLoyalty.body.next_tier.name, "Silver");
 
-  const settings = await request("/api/admin/loyalty-settings", { cookie: adminCookie });
-  assert.equal(settings.response.status, 200);
-  assert.equal(settings.body.purchase_amount_per_point, 10000);
-  const updatedSettings = await request("/api/admin/loyalty-settings", {
+  const automatedPoints = await request("/api/admin/points/earn", {
     method: "POST",
     cookie: adminCookie,
-    payload: {
-      purchase_amount_per_point: 5000,
-      points_per_purchase_step: 2,
-      points_per_claim: 3,
-      max_points_per_purchase: 6,
-    },
+    payload: { member_id: registration.body.id, amount: 100000 },
   });
-  assert.equal(updatedSettings.response.status, 200);
-  const invalidSettings = await request("/api/admin/loyalty-settings", {
-    method: "POST",
-    cookie: adminCookie,
-    payload: {
-      purchase_amount_per_point: 0,
-      points_per_purchase_step: 1,
-      points_per_claim: 1,
-      max_points_per_purchase: 0,
-    },
-  });
-  assert.equal(invalidSettings.response.status, 400);
-  const belowThreshold = await request("/api/admin/points/earn", {
-    method: "POST",
-    cookie: adminCookie,
-    payload: { member_id: registration.body.id, amount: 1000 },
-  });
-  assert.equal(belowThreshold.response.status, 400);
-  const purchasePoints = await request("/api/admin/points/earn", {
-    method: "POST",
-    cookie: adminCookie,
-    payload: { member_id: registration.body.id, amount: 25000 },
-  });
-  assert.equal(purchasePoints.response.status, 201);
-  assert.equal(purchasePoints.body.points_awarded, 6);
+  assert.equal(automatedPoints.response.status, 404);
   const manualPoints = await request("/api/admin/points/adjust", {
     method: "POST",
     cookie: adminCookie,
-    payload: { member_id: registration.body.id, action: "add", points: 4, reason: "Kompensasi uji" },
+    payload: { member_id: registration.body.id, action: "add", points: 13, reason: "Kompensasi uji" },
   });
   assert.equal(manualPoints.response.status, 201);
-  assert.equal(manualPoints.body.points_balance, 10);
+  assert.equal(manualPoints.body.points_balance, 13);
+
+  const tierList = await request("/api/admin/tiers", { cookie: adminCookie });
+  assert.deepEqual(tierList.body.map(tier => [tier.name, Number(tier.min_spend)]), [
+    ["Bronze", 0],
+    ["Silver", 1_000_000],
+    ["Gold", 5_000_000],
+  ]);
+  const invalidTierSettings = await request("/api/admin/tiers/settings", {
+    method: "POST",
+    cookie: adminCookie,
+    payload: { silver_min_spend: 300_000, gold_min_spend: 300_000 },
+  });
+  assert.equal(invalidTierSettings.response.status, 400);
+  const tierSettings = await request("/api/admin/tiers/settings", {
+    method: "POST",
+    cookie: adminCookie,
+    payload: { silver_min_spend: 100_000, gold_min_spend: 300_000 },
+  });
+  assert.equal(tierSettings.response.status, 200);
+  assert.deepEqual(tierSettings.body.map(tier => [tier.name, Number(tier.min_spend)]), [
+    ["Bronze", 0],
+    ["Silver", 100_000],
+    ["Gold", 300_000],
+  ]);
+  const baseline = await request("/api/admin/spend/baseline", {
+    method: "POST",
+    cookie: adminCookie,
+    payload: { member_id: registration.body.id, amount: 150_000 },
+  });
+  assert.equal(baseline.response.status, 201);
+  assert.equal(baseline.body.total_spend, 150_000);
+  assert.equal(baseline.body.tier, "Silver");
+  const customerSession = await request("/api/customer/session", { cookie: customerCookie });
+  assert.equal(customerSession.body.customer.tier_name, "Silver");
+  assert.equal(customerSession.body.customer.total_spend, 150_000);
+  const spend = await request("/api/admin/spend/record", {
+    method: "POST",
+    cookie: adminCookie,
+    payload: { member_id: registration.body.id, amount: 200_000, description: "Pembelian uji" },
+  });
+  assert.equal(spend.response.status, 201);
+  assert.equal(spend.body.total_spend, 350_000);
+  assert.equal(spend.body.tier, "Gold");
+  const customerLoyalty = await request("/api/customer/loyalty", { cookie: customerCookie });
+  assert.equal(customerLoyalty.body.total_spend, 350_000);
+  assert.equal(customerLoyalty.body.tier.name, "Gold");
+  assert.equal(customerLoyalty.body.next_tier, null);
+  const lowerBaseline = await request("/api/admin/spend/baseline", {
+    method: "POST",
+    cookie: adminCookie,
+    payload: { member_id: registration.body.id, amount: 50_000 },
+  });
+  assert.equal(lowerBaseline.body.tier, "Bronze");
+  const manualTierAssignment = await request("/api/admin/customers/tier", {
+    method: "POST",
+    cookie: adminCookie,
+    payload: { member_id: registration.body.id, tier_id: null },
+  });
+  assert.equal(manualTierAssignment.response.status, 404);
+  assert.equal((await request("/api/admin/customers", { cookie: adminCookie })).body[0].total_spend, 50_000);
 
   const today = new Date().toISOString().slice(0, 10);
   const promoCreate = await request("/api/admin/promos", {
@@ -248,7 +303,8 @@ test("API, QR membership, admin claims, and static-file allowlist work", async (
   });
   assert.equal(claim.response.status, 201);
   assert.equal(claim.body.member_id, registration.body.id);
-  assert.equal(claim.body.points_awarded, 3);
+  assert.equal(Object.hasOwn(claim.body, "points_awarded"), false);
+  assert.equal((await request("/api/customer/loyalty", { cookie: customerCookie })).body.points_balance, 13);
 
   const rewards = [];
   for (const payload of [
@@ -284,11 +340,11 @@ test("API, QR membership, admin claims, and static-file allowlist work", async (
   assert.equal(enabledReward.response.status, 200);
   const loyalty = await request("/api/customer/loyalty", { cookie: customerCookie });
   assert.equal(loyalty.body.points_balance, 13);
-  assert.equal(loyalty.body.transactions.length, 3);
+  assert.equal(loyalty.body.transactions.length, 1);
   assert.equal(loyalty.body.rewards.length, 3);
   const adminLedger = await request("/api/admin/points/transactions", { cookie: adminCookie });
   assert.equal(adminLedger.response.status, 200);
-  assert.equal(adminLedger.body.length, 3);
+  assert.equal(adminLedger.body.length, 1);
 
   for (const reward of rewards) {
     const redemption = await request("/api/admin/rewards/redeem", {
@@ -332,11 +388,6 @@ test("scrypt hashes remain compatible and malformed hashes fail closed", async (
   assert.equal(await verifyPassword(password, encoded), true);
   assert.equal(await verifyPassword("wrong-password", encoded), false);
   assert.equal(await verifyPassword(password, "scrypt$999999$bad$hash"), false);
-});
-
-test("QR generator produces a PNG", async () => {
-  const png = await generateMemberQr("BC-0123456789ABCDEF");
-  assert.deepEqual(png.subarray(0, 8), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
 });
 
 test("Vercel requires persistent Turso credentials", () => {
@@ -421,7 +472,8 @@ test("legacy SQLite customer and promo tables are migrated without losing member
         name TEXT NOT NULL,
         email TEXT NOT NULL COLLATE NOCASE UNIQUE,
         phone TEXT NOT NULL,
-        joined INTEGER NOT NULL
+        joined INTEGER NOT NULL,
+        qr_code BLOB
       )`,
       `CREATE TABLE promos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -438,12 +490,90 @@ test("legacy SQLite customer and promo tables are migrated without losing member
     await initializeDatabase(client);
     await initializeDatabase(client);
 
-    const migrated = await client.execute("SELECT member_id, name, qr_code, points_balance FROM customers WHERE member_id = 'BC-LEGACY'");
+    const migrated = await client.execute("SELECT member_id, name, email, phone, points_balance, total_spend, tier_id FROM customers WHERE member_id = 'BC-LEGACY'");
     assert.equal(migrated.rows[0].name, "Legacy Member");
+    assert.equal(migrated.rows[0].email, "legacy@example.invalid");
+    assert.equal(migrated.rows[0].phone, "08123456789");
     assert.equal(Number(migrated.rows[0].points_balance), 0);
-    assert.deepEqual(Buffer.from(migrated.rows[0].qr_code).subarray(0, 8), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+    assert.equal(Number(migrated.rows[0].total_spend), 0);
+    assert.notEqual(migrated.rows[0].tier_id, null);
+    const migratedColumns = await client.execute("PRAGMA table_info(customers)");
+    assert.equal(migratedColumns.rows.some(column => column.name === "qr_code"), false);
     const promos = await client.execute("SELECT COUNT(*) AS count FROM promos");
     assert.equal(Number(promos.rows[0].count), 6);
+  } finally {
+    await client.close();
+  }
+});
+
+test("legacy purchase amounts and tier thresholds migrate once", async () => {
+  const client = createDatabaseClient({ databaseUrl: "file::memory:" });
+  try {
+    await client.batch([
+      `CREATE TABLE customers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        member_id TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        email TEXT NOT NULL COLLATE NOCASE UNIQUE,
+        phone TEXT NOT NULL,
+        joined INTEGER NOT NULL,
+        points_balance INTEGER NOT NULL DEFAULT 0,
+        tier_id INTEGER
+      )`,
+      `CREATE TABLE loyalty_transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        member_id TEXT NOT NULL,
+        type TEXT NOT NULL,
+        points_delta INTEGER NOT NULL,
+        description TEXT NOT NULL,
+        purchase_amount INTEGER,
+        reward_id INTEGER,
+        created_at INTEGER NOT NULL
+      )`,
+      `CREATE TABLE loyalty_tiers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+        description TEXT NOT NULL DEFAULT '',
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL
+      )`,
+      "INSERT INTO customers (member_id, name, email, phone, joined) VALUES ('BC-HISTORY', 'History Member', 'history@example.invalid', '08123456789', 1762063200000)",
+      "INSERT INTO loyalty_transactions (member_id, type, points_delta, description, purchase_amount, created_at) VALUES ('BC-HISTORY', 'purchase', 0, 'Pembelian lama', 6000000, 1762063200000)",
+    ], "write");
+    await initializeDatabase(client);
+
+    const migrated = await client.execute({
+      sql: `SELECT customers.total_spend, loyalty_tiers.name AS tier_name
+            FROM customers LEFT JOIN loyalty_tiers ON loyalty_tiers.id = customers.tier_id
+            WHERE customers.member_id = 'BC-HISTORY'`,
+    });
+    assert.equal(Number(migrated.rows[0].total_spend), 6_000_000);
+    assert.equal(migrated.rows[0].tier_name, "Gold");
+    const historyCount = await client.execute("SELECT COUNT(*) AS count FROM customer_spend_transactions");
+    assert.equal(Number(historyCount.rows[0].count), 1);
+
+    await client.execute("UPDATE loyalty_tiers SET min_spend = 2000000 WHERE name = 'Silver'");
+    await client.execute("UPDATE loyalty_tiers SET min_spend = 8000000 WHERE name = 'Gold'");
+    await initializeDatabase(client);
+    const retainedThresholds = await client.execute(
+      "SELECT name, min_spend FROM loyalty_tiers WHERE name IN ('Silver', 'Gold') ORDER BY min_spend",
+    );
+    assert.deepEqual(retainedThresholds.rows.map(tier => [tier.name, Number(tier.min_spend)]), [
+      ["Silver", 2_000_000],
+      ["Gold", 8_000_000],
+    ]);
+    const retainedHistoryCount = await client.execute("SELECT COUNT(*) AS count FROM customer_spend_transactions");
+    assert.equal(Number(retainedHistoryCount.rows[0].count), 1);
+    await client.execute("UPDATE loyalty_tiers SET min_spend = 0");
+    await initializeDatabase(client);
+    const repairedThresholds = await client.execute(
+      "SELECT name, min_spend FROM loyalty_tiers WHERE name IN ('Bronze', 'Silver', 'Gold') ORDER BY min_spend",
+    );
+    assert.deepEqual(repairedThresholds.rows.map(tier => [tier.name, Number(tier.min_spend)]), [
+      ["Bronze", 0],
+      ["Silver", 1_000_000],
+      ["Gold", 5_000_000],
+    ]);
   } finally {
     await client.close();
   }

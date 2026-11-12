@@ -281,13 +281,10 @@ async function initAccountPage() {
   $('#profileName').textContent = currentUser.name;
   $('#profileAvatar').textContent = currentUser.name.charAt(0).toUpperCase();
   $('#cardName').textContent = currentUser.name;
-  $('#cardId').textContent = 'ID · ' + currentUser.id;
 
   // Format Tanggal Bergabung
   const joinDate = new Date(currentUser.joined).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
   $('#profileJoinDate').textContent = joinDate;
-
-  $('#qrCodeImage').src = '/api/customer/qr';
 
   // Tombol Logout
   $('#btnLogout').addEventListener('click', async () => {

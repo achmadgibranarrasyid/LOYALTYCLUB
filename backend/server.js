@@ -6,7 +6,6 @@ const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
-const QRCode = require("qrcode");
 const { createClient } = require("@libsql/client");
 
 const ROOT_DIR = path.resolve(__dirname, "..");
@@ -20,6 +19,7 @@ const PUBLIC_STATIC_FILES = new Set([
   "index.html",
   "login.html",
   "mont-logo.svg",
+  "MONT NEON BOX.png",
   "pengguna.html",
   "privacy.html",
   "reset-password.html",
@@ -32,12 +32,6 @@ const ADMIN_PASSWORD_MIN_LENGTH = 16;
 const SESSION_DURATION_MS = 8 * 60 * 60 * 1000;
 const RESET_TOKEN_DURATION_MS = 60 * 60 * 1000;
 const PRIVACY_POLICY_VERSION = "2026-11-04";
-const DEFAULT_LOYALTY_SETTINGS = {
-  purchase_amount_per_point: 10000,
-  points_per_purchase_step: 1,
-  points_per_claim: 1,
-  max_points_per_purchase: 0,
-};
 const RATE_LIMITS = {
   "admin-login": [5, 5 * 60 * 1000],
   "customer-register": [10, 60 * 60 * 1000],
@@ -115,16 +109,6 @@ function validatePassword(password) {
     && !/[\x00-\x1f\x7f]/.test(password);
 }
 
-function generateMemberQr(memberId) {
-  return QRCode.toBuffer(memberId, {
-    type: "png",
-    errorCorrectionLevel: "M",
-    margin: 4,
-    width: 256,
-    color: { dark: "#29491f", light: "#ffffff" },
-  });
-}
-
 function createDatabaseClient(options = {}) {
   const env = options.env || process.env;
   const databaseUrl = options.databaseUrl || env.TURSO_DATABASE_URL;
@@ -160,8 +144,9 @@ async function initializeDatabase(client) {
       password_hash TEXT,
       consent_at INTEGER,
       privacy_policy_version TEXT,
-      qr_code BLOB,
-      points_balance INTEGER NOT NULL DEFAULT 0
+      points_balance INTEGER NOT NULL DEFAULT 0,
+      tier_id INTEGER,
+      total_spend INTEGER NOT NULL DEFAULT 0
     )`,
     `CREATE TABLE IF NOT EXISTS promos (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -203,6 +188,23 @@ async function initializeDatabase(client) {
       active INTEGER NOT NULL DEFAULT 1,
       created_at INTEGER NOT NULL
     )`,
+    `CREATE TABLE IF NOT EXISTS loyalty_tiers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+      description TEXT NOT NULL DEFAULT '',
+      active INTEGER NOT NULL DEFAULT 1,
+      min_spend INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS customer_spend_transactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      member_id TEXT NOT NULL,
+      type TEXT NOT NULL CHECK (type IN ('purchase', 'baseline', 'correction')),
+      amount_delta INTEGER NOT NULL,
+      description TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    )`,
+    "CREATE INDEX IF NOT EXISTS customer_spend_transactions_member_time ON customer_spend_transactions (member_id, created_at DESC)",
     `CREATE TABLE IF NOT EXISTS auth_sessions (
       token_hash TEXT PRIMARY KEY,
       role TEXT NOT NULL CHECK (role IN ('admin', 'customer')),
@@ -228,12 +230,14 @@ async function initializeDatabase(client) {
 
   const customerColumns = await client.execute("PRAGMA table_info(customers)");
   const existingCustomerColumns = new Set(customerColumns.rows.map((row) => row.name));
+  const needsSpendBackfill = !existingCustomerColumns.has("total_spend");
   for (const [column, definition] of [
     ["password_hash", "TEXT"],
     ["consent_at", "INTEGER"],
     ["privacy_policy_version", "TEXT"],
-    ["qr_code", "BLOB"],
     ["points_balance", "INTEGER NOT NULL DEFAULT 0"],
+    ["tier_id", "INTEGER"],
+    ["total_spend", "INTEGER NOT NULL DEFAULT 0"],
   ]) {
     if (!existingCustomerColumns.has(column)) {
       try {
@@ -242,6 +246,9 @@ async function initializeDatabase(client) {
         if (!/duplicate column/i.test(error.message)) throw error;
       }
     }
+  }
+  if (existingCustomerColumns.has("qr_code")) {
+    await client.execute("ALTER TABLE customers DROP COLUMN qr_code");
   }
   const promoColumns = await client.execute("PRAGMA table_info(promos)");
   const existingPromoColumns = new Set(promoColumns.rows.map((row) => row.name));
@@ -253,6 +260,27 @@ async function initializeDatabase(client) {
         if (!/duplicate column/i.test(error.message)) throw error;
       }
     }
+  }
+  const tierColumns = await client.execute("PRAGMA table_info(loyalty_tiers)");
+  if (!tierColumns.rows.some((row) => row.name === "min_spend")) {
+    await client.execute("ALTER TABLE loyalty_tiers ADD COLUMN min_spend INTEGER NOT NULL DEFAULT 0");
+  }
+  if (needsSpendBackfill) {
+    await client.execute(`
+      UPDATE customers
+      SET total_spend = COALESCE((
+        SELECT SUM(purchase_amount) FROM loyalty_transactions
+        WHERE loyalty_transactions.member_id = customers.member_id
+          AND loyalty_transactions.type = 'purchase'
+          AND purchase_amount > 0
+      ), 0)
+    `);
+    await client.execute(`
+      INSERT INTO customer_spend_transactions (member_id, type, amount_delta, description, created_at)
+      SELECT member_id, 'purchase', purchase_amount, description, created_at
+      FROM loyalty_transactions
+      WHERE type = 'purchase' AND purchase_amount > 0
+    `);
   }
 
   await client.executeMultiple(`
@@ -277,14 +305,6 @@ async function initializeDatabase(client) {
     END;
   `);
 
-  const withoutQr = await client.execute("SELECT id, member_id FROM customers WHERE qr_code IS NULL");
-  for (const customer of withoutQr.rows) {
-    await client.execute({
-      sql: "UPDATE customers SET qr_code = ? WHERE id = ?",
-      args: [await generateMemberQr(customer.member_id), customer.id],
-    });
-  }
-
   const seeded = await client.execute("SELECT 1 FROM app_settings WHERE key = 'initial_promos_seeded'");
   const promoCount = await client.execute("SELECT COUNT(*) AS count FROM promos");
   if (seeded.rows.length === 0 && Number(promoCount.rows[0].count) === 0) {
@@ -303,10 +323,25 @@ async function initializeDatabase(client) {
       "INSERT OR IGNORE INTO app_settings (key, value) VALUES ('initial_promos_seeded', '1')",
     );
   }
-  await client.execute({
-    sql: "INSERT OR IGNORE INTO app_settings (key, value) VALUES ('loyalty_settings', ?)",
-    args: [JSON.stringify(DEFAULT_LOYALTY_SETTINGS)],
-  });
+  for (const [name, minSpend] of [["Bronze", 0], ["Silver", 1_000_000], ["Gold", 5_000_000]]) {
+    await client.execute({
+      sql: "INSERT OR IGNORE INTO loyalty_tiers (name, description, min_spend, created_at) VALUES (?, '', ?, ?)",
+      args: [name, minSpend, nowMs()],
+    });
+  }
+  const tierThresholds = await client.execute(
+    "SELECT name, min_spend FROM loyalty_tiers WHERE name IN ('Bronze', 'Silver', 'Gold')",
+  );
+  const thresholds = new Map(tierThresholds.rows.map((tier) => [String(tier.name).toLowerCase(), Number(tier.min_spend)]));
+  if (thresholds.get("bronze") !== 0 || !Number.isSafeInteger(thresholds.get("silver"))
+    || !Number.isSafeInteger(thresholds.get("gold")) || thresholds.get("silver") < 1
+    || thresholds.get("gold") <= thresholds.get("silver")) {
+    for (const [name, minSpend] of [["Bronze", 0], ["Silver", 1_000_000], ["Gold", 5_000_000]]) {
+      await client.execute("UPDATE loyalty_tiers SET min_spend = ? WHERE name = ?", [minSpend, name]);
+    }
+  }
+  await synchronizeCustomerTiers(client);
+  await client.execute("DELETE FROM app_settings WHERE key = 'loyalty_settings'");
   await client.execute("DELETE FROM auth_sessions WHERE expires_at <= ?", [nowMs()]);
   await client.execute(
     "DELETE FROM password_reset_tokens WHERE expires_at <= ? OR used_at IS NOT NULL",
@@ -504,48 +539,125 @@ async function createSession(client, role, { username = null, memberId = null } 
 
 async function createCustomerSessionPayload(client, session) {
   const result = await client.execute({
-    sql: `SELECT member_id AS id, name, email, phone, joined, points_balance
-          FROM customers WHERE member_id = ?`,
+    sql: `SELECT customers.member_id AS id, customers.name, customers.email, customers.phone,
+                 customers.joined, customers.points_balance, customers.total_spend, customers.tier_id,
+                 loyalty_tiers.name AS tier_name, loyalty_tiers.description AS tier_description
+          FROM customers LEFT JOIN loyalty_tiers ON loyalty_tiers.id = customers.tier_id
+          WHERE customers.member_id = ?`,
     args: [session.member_id],
   });
   return result.rows[0] || null;
 }
 
-async function getLoyaltySettings(client) {
-  const result = await client.execute("SELECT value FROM app_settings WHERE key = 'loyalty_settings'");
-  if (result.rows.length === 0) return { ...DEFAULT_LOYALTY_SETTINGS };
-  return validateLoyaltySettings({ ...DEFAULT_LOYALTY_SETTINGS, ...JSON.parse(result.rows[0].value) });
-}
-
-function validateLoyaltySettings(payload) {
-  const settings = {
-    purchase_amount_per_point: payload.purchase_amount_per_point,
-    points_per_purchase_step: payload.points_per_purchase_step,
-    points_per_claim: payload.points_per_claim,
-    max_points_per_purchase: payload.max_points_per_purchase,
-  };
-  if (!Number.isSafeInteger(settings.purchase_amount_per_point)
-    || settings.purchase_amount_per_point < 1
-    || settings.purchase_amount_per_point > 100_000_000
-    || !Number.isSafeInteger(settings.points_per_purchase_step)
-    || settings.points_per_purchase_step < 0
-    || settings.points_per_purchase_step > 100_000
-    || !Number.isSafeInteger(settings.points_per_claim)
-    || settings.points_per_claim < 0
-    || settings.points_per_claim > 100_000
-    || !Number.isSafeInteger(settings.max_points_per_purchase)
-    || settings.max_points_per_purchase < 0
-    || settings.max_points_per_purchase > 100_000_000) {
-    throw Object.assign(new Error("Aturan perolehan poin tidak valid."), { status: 400 });
+async function recordSpend(client, memberId, amount, description, type, setTotal = false) {
+  const customer = await client.execute(
+    "SELECT total_spend FROM customers WHERE member_id = ?",
+    [memberId],
+  );
+  if (!customer.rows.length) throw Object.assign(new Error("Pelanggan tidak ditemukan."), { status: 404 });
+  const currentSpend = Number(customer.rows[0].total_spend);
+  const nextSpend = setTotal ? amount : currentSpend + amount;
+  if (!Number.isSafeInteger(nextSpend) || nextSpend < 0 || nextSpend > 1_000_000_000_000) {
+    throw Object.assign(new Error("Total nominal transaksi maksimal Rp1.000.000.000.000."), { status: 400 });
   }
-  return settings;
+  const delta = nextSpend - currentSpend;
+  await client.batch([
+    {
+      sql: `INSERT INTO customer_spend_transactions (member_id, type, amount_delta, description, created_at)
+            VALUES (?, ?, ?, ?, ?)`,
+      args: [memberId, type, delta, description, nowMs()],
+    },
+    {
+      sql: "UPDATE customers SET total_spend = ? WHERE member_id = ?",
+      args: [nextSpend, memberId],
+    },
+    {
+      sql: `UPDATE customers
+            SET tier_id = (
+              SELECT id FROM loyalty_tiers
+              WHERE active = 1 AND name IN ('Bronze', 'Silver', 'Gold')
+                AND min_spend <= customers.total_spend
+              ORDER BY min_spend DESC LIMIT 1
+            )
+            WHERE member_id = ?`,
+      args: [memberId],
+    },
+  ], "write");
+  const tier = await getTierForSpend(client, nextSpend);
+  return { total_spend: nextSpend, tier: tier ? tier.name : null };
 }
 
-function calculatePurchasePoints(amount, settings) {
-  const earned = Math.floor(amount / settings.purchase_amount_per_point) * settings.points_per_purchase_step;
-  return settings.max_points_per_purchase > 0
-    ? Math.min(earned, settings.max_points_per_purchase)
-    : earned;
+async function listTiers(client) {
+  const result = await client.execute(
+    `SELECT tiers.id, tiers.name, tiers.description, tiers.active, tiers.min_spend,
+            COUNT(customers.id) AS member_count
+     FROM loyalty_tiers AS tiers
+     LEFT JOIN customers ON customers.tier_id = tiers.id
+     GROUP BY tiers.id
+     ORDER BY CASE tiers.name WHEN 'Bronze' THEN 0 WHEN 'Silver' THEN 1 WHEN 'Gold' THEN 2 ELSE 3 END,
+              tiers.min_spend`,
+  );
+  return result.rows;
+}
+
+async function getTierForSpend(client, spend) {
+  const result = await client.execute({
+    sql: `SELECT id, name, description, min_spend FROM loyalty_tiers
+          WHERE active = 1 AND name IN ('Bronze', 'Silver', 'Gold') AND min_spend <= ?
+          ORDER BY min_spend DESC LIMIT 1`,
+    args: [spend],
+  });
+  return result.rows[0] || null;
+}
+
+async function synchronizeCustomerTiers(client, memberId = null) {
+  const silver = await client.execute("SELECT min_spend FROM loyalty_tiers WHERE name = 'Silver'");
+  const gold = await client.execute("SELECT min_spend FROM loyalty_tiers WHERE name = 'Gold'");
+  if (Number(gold.rows[0].min_spend) <= Number(silver.rows[0].min_spend)) {
+    throw Object.assign(new Error("Ambang Gold harus lebih besar daripada ambang Silver."), { status: 400 });
+  }
+  const statement = {
+    sql: `UPDATE customers
+          SET tier_id = (
+            SELECT id FROM loyalty_tiers
+            WHERE active = 1 AND name IN ('Bronze', 'Silver', 'Gold')
+              AND min_spend <= customers.total_spend
+            ORDER BY min_spend DESC LIMIT 1
+          )
+          ${memberId ? "WHERE member_id = ?" : ""}`,
+    args: memberId ? [memberId] : [],
+  };
+  await client.execute(statement);
+}
+
+async function saveTierSettings(client, payload) {
+  const silverMinSpend = payload.silver_min_spend;
+  const goldMinSpend = payload.gold_min_spend;
+  if (!Number.isSafeInteger(silverMinSpend) || !Number.isSafeInteger(goldMinSpend)
+    || silverMinSpend < 1 || goldMinSpend <= silverMinSpend || goldMinSpend > 1_000_000_000_000) {
+    throw Object.assign(new Error("Ambang Silver harus lebih dari Rp0 dan ambang Gold harus lebih besar daripada Silver."), { status: 400 });
+  }
+  await client.batch([
+    {
+      sql: "UPDATE loyalty_tiers SET min_spend = ? WHERE name = 'Silver'",
+      args: [silverMinSpend],
+    },
+    {
+      sql: "UPDATE loyalty_tiers SET min_spend = ? WHERE name = 'Gold'",
+      args: [goldMinSpend],
+    },
+    {
+      sql: `UPDATE customers
+            SET tier_id = (
+              SELECT id FROM loyalty_tiers
+              WHERE active = 1 AND name IN ('Bronze', 'Silver', 'Gold')
+                AND min_spend <= customers.total_spend
+              ORDER BY min_spend DESC LIMIT 1
+            )`,
+      args: [],
+    },
+  ], "write");
+  return listTiers(client);
 }
 
 function pointsTransactionStatement(memberId, delta, type, description, options = {}) {
@@ -591,15 +703,16 @@ function csvEscape(value) {
 
 async function sendCustomerCsv(client, res, search) {
   const customers = await customerSearch(client, search);
-  const rows = [["ID Member", "Nama", "Email", "WhatsApp", "Bergabung", "Poin"]];
+  const rows = [["Nama", "Email", "WhatsApp", "Bergabung", "Total transaksi", "Poin", "Tier"]];
   for (const customer of customers) {
     rows.push([
-      customer.member_id,
       customer.name,
       customer.email,
       customer.phone,
       new Date(Number(customer.joined)).toISOString().slice(0, 10),
+      customer.total_spend,
       customer.points_balance,
+      customer.tier_name || "",
     ]);
   }
   const body = Buffer.from(`\uFEFF${rows.map((row) => row.map(csvEscape).join(",")).join("\r\n")}`, "utf8");
@@ -617,20 +730,24 @@ async function customerSearch(client, rawSearch) {
   const search = String(rawSearch || "").trim().slice(0, 100);
   if (!search) {
     const result = await client.execute(
-      "SELECT member_id, name, email, phone, joined, points_balance FROM customers ORDER BY joined DESC",
+      `SELECT customers.member_id, customers.name, customers.email, customers.phone, customers.joined,
+              customers.points_balance, customers.total_spend, customers.tier_id, loyalty_tiers.name AS tier_name
+       FROM customers LEFT JOIN loyalty_tiers ON loyalty_tiers.id = customers.tier_id
+       ORDER BY customers.joined DESC`,
     );
     return result.rows;
   }
   const escaped = search.replaceAll("!", "!!").replaceAll("%", "!%").replaceAll("_", "!_");
   const pattern = `%${escaped}%`;
   const result = await client.execute({
-    sql: `SELECT member_id, name, email, phone, joined, points_balance FROM customers
-          WHERE member_id LIKE ? ESCAPE '!'
-             OR name LIKE ? ESCAPE '!'
-             OR email LIKE ? ESCAPE '!'
-             OR phone LIKE ? ESCAPE '!'
-          ORDER BY joined DESC`,
-    args: [pattern, pattern, pattern, pattern],
+    sql: `SELECT customers.member_id, customers.name, customers.email, customers.phone, customers.joined,
+                 customers.points_balance, customers.total_spend, customers.tier_id, loyalty_tiers.name AS tier_name
+          FROM customers LEFT JOIN loyalty_tiers ON loyalty_tiers.id = customers.tier_id
+          WHERE customers.name LIKE ? ESCAPE '!'
+             OR customers.email LIKE ? ESCAPE '!'
+             OR customers.phone LIKE ? ESCAPE '!'
+          ORDER BY customers.joined DESC`,
+    args: [pattern, pattern, pattern],
   });
   return result.rows;
 }
@@ -641,11 +758,12 @@ async function claimCustomerLookup(client, rawSearch) {
   const escaped = search.replaceAll("!", "!!").replaceAll("%", "!%").replaceAll("_", "!_");
   const pattern = `%${escaped}%`;
   const result = await client.execute({
-    sql: `SELECT member_id, name, phone FROM customers
+    sql: `SELECT member_id, name, email, phone FROM customers
           WHERE name LIKE ? ESCAPE '!'
+             OR email LIKE ? ESCAPE '!'
              OR phone LIKE ? ESCAPE '!'
           ORDER BY name COLLATE NOCASE, joined DESC LIMIT 10`,
-    args: [pattern, pattern],
+    args: [pattern, pattern, pattern],
   });
   return result.rows;
 }
@@ -749,7 +867,13 @@ async function listRewards(client, activeOnly = false) {
 
 async function getCustomerLoyalty(client, memberId) {
   const [customer, transactions, rewards] = await Promise.all([
-    client.execute("SELECT points_balance FROM customers WHERE member_id = ?", [memberId]),
+    client.execute(
+      `SELECT customers.points_balance, customers.total_spend,
+              loyalty_tiers.name, loyalty_tiers.description
+       FROM customers LEFT JOIN loyalty_tiers ON loyalty_tiers.id = customers.tier_id
+       WHERE customers.member_id = ?`,
+      [memberId],
+    ),
     client.execute(
       `SELECT type, points_delta, description, purchase_amount, created_at
        FROM loyalty_transactions WHERE member_id = ? ORDER BY created_at DESC, id DESC LIMIT 50`,
@@ -758,8 +882,21 @@ async function getCustomerLoyalty(client, memberId) {
     listRewards(client, true),
   ]);
   if (customer.rows.length === 0) throw Object.assign(new Error("Pelanggan tidak ditemukan."), { status: 404 });
+  const totalSpend = Number(customer.rows[0].total_spend);
+  const nextTierResult = await client.execute({
+    sql: `SELECT name, min_spend FROM loyalty_tiers
+          WHERE active = 1 AND name IN ('Bronze', 'Silver', 'Gold') AND min_spend > ?
+          ORDER BY min_spend LIMIT 1`,
+    args: [totalSpend],
+  });
   return {
     points_balance: Number(customer.rows[0].points_balance),
+    total_spend: totalSpend,
+    tier: customer.rows[0].name ? {
+      name: customer.rows[0].name,
+      description: customer.rows[0].description,
+    } : null,
+    next_tier: nextTierResult.rows[0] || null,
     transactions: transactions.rows,
     rewards,
   };
@@ -847,18 +984,18 @@ async function registerCustomer(client, req, res) {
   const joined = nowMs();
   const memberId = `BC-${crypto.randomBytes(8).toString("hex").toUpperCase()}`;
   const passwordHash = await hashPassword(password);
-  const memberQr = await generateMemberQr(memberId);
   try {
     await client.execute({
       sql: `INSERT INTO customers
-            (member_id, name, email, phone, joined, password_hash, consent_at, privacy_policy_version, qr_code)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: [memberId, cleanName, cleanEmail, cleanPhone, joined, passwordHash, joined, PRIVACY_POLICY_VERSION, memberQr],
+            (member_id, name, email, phone, joined, password_hash, consent_at, privacy_policy_version)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [memberId, cleanName, cleanEmail, cleanPhone, joined, passwordHash, joined, PRIVACY_POLICY_VERSION],
     });
   } catch (error) {
     if (/UNIQUE constraint failed: customers.email|customers\.email/i.test(error.message)) return sendError(res, 409, "Email ini sudah terdaftar.");
     throw error;
   }
+  await synchronizeCustomerTiers(client, memberId);
   const token = await createSession(client, "customer", { memberId });
   sendJson(res, 201, { id: memberId, name: cleanName, email: cleanEmail, phone: cleanPhone, joined }, {
     "Set-Cookie": sessionCookie(token, "customer"),
@@ -879,8 +1016,12 @@ async function customerLogin(client, req, res) {
   const payload = await readJson(req);
   if (typeof payload.email !== "string" || typeof payload.password !== "string") return sendError(res, 400, "Email dan kata sandi wajib diisi.");
   const customerResult = await client.execute({
-    sql: `SELECT member_id AS id, name, email, phone, joined, password_hash
-          FROM customers WHERE email = ?`,
+    sql: `SELECT customers.member_id AS id, customers.name, customers.email, customers.phone,
+                 customers.joined, customers.points_balance, customers.total_spend,
+                 customers.password_hash, customers.tier_id,
+                 loyalty_tiers.name AS tier_name, loyalty_tiers.description AS tier_description
+          FROM customers LEFT JOIN loyalty_tiers ON loyalty_tiers.id = customers.tier_id
+          WHERE customers.email = ?`,
     args: [payload.email.trim().toLowerCase()],
   });
   const customer = customerResult.rows[0];
@@ -1016,11 +1157,11 @@ async function handleAdminGet(client, req, res, pathname, query) {
     return sendJson(res, 200, await claimCustomerLookup(client, query.get("q")));
   }
   if (pathname === "/api/admin/customers.csv") return sendCustomerCsv(client, res, query.get("q"));
-  if (pathname === "/api/admin/loyalty-settings") return sendJson(res, 200, await getLoyaltySettings(client));
+  if (pathname === "/api/admin/tiers") return sendJson(res, 200, await listTiers(client));
   if (pathname === "/api/admin/rewards") return sendJson(res, 200, await listRewards(client));
   if (pathname === "/api/admin/points/transactions") {
     const transactions = await client.execute(
-      `SELECT ledger.member_id, customers.name AS customer_name, ledger.type, ledger.points_delta,
+      `SELECT customers.name AS customer_name, ledger.type, ledger.points_delta,
               ledger.description, ledger.created_at
        FROM loyalty_transactions AS ledger
        LEFT JOIN customers ON customers.member_id = ledger.member_id
@@ -1030,7 +1171,7 @@ async function handleAdminGet(client, req, res, pathname, query) {
   }
   if (pathname === "/api/admin/claims") {
     const claims = await client.execute(
-      `SELECT id, promo_id, promo_title, member_id, customer_name, claimed_at
+      `SELECT id, promo_id, promo_title, customer_name, claimed_at
        FROM promo_claims ORDER BY claimed_at DESC LIMIT 500`,
     );
     return sendJson(res, 200, claims.rows);
@@ -1041,14 +1182,27 @@ async function handleAdminGet(client, req, res, pathname, query) {
 
 async function handleAdminPost(client, req, res, pathname) {
   const payload = await readJson(req);
-  if (pathname === "/api/admin/loyalty-settings") {
-    const settings = validateLoyaltySettings(payload);
-    await client.execute({
-      sql: `INSERT INTO app_settings (key, value) VALUES ('loyalty_settings', ?)
-            ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-      args: [JSON.stringify(settings)],
-    });
-    return sendJson(res, 200, settings);
+  if (pathname === "/api/admin/tiers/settings") {
+    return sendJson(res, 200, await saveTierSettings(client, payload));
+  }
+  if (pathname === "/api/admin/spend/record" || pathname === "/api/admin/spend/baseline") {
+    const memberId = typeof payload.member_id === "string" ? payload.member_id.trim() : "";
+    const baseline = pathname.endsWith("/baseline");
+    const amount = payload.amount;
+    const description = typeof payload.description === "string" ? payload.description.trim() : "";
+    if (!memberId || !Number.isSafeInteger(amount) || amount < (baseline ? 0 : 1)
+      || amount > 1_000_000_000_000 || description.length > 200) {
+      return sendError(res, 400, "Pelanggan, nominal, atau keterangan transaksi tidak valid.");
+    }
+    const result = await recordSpend(
+      client,
+      memberId,
+      amount,
+      description || (baseline ? "Penetapan total transaksi historis" : "Transaksi belanja"),
+      baseline ? "baseline" : "purchase",
+      baseline,
+    );
+    return sendJson(res, 201, { member_id: memberId, ...result });
   }
   if (pathname === "/api/admin/rewards") {
     const saved = await saveReward(client, payload);
@@ -1075,25 +1229,6 @@ async function handleAdminPost(client, req, res, pathname) {
       { rewardId },
     );
     return sendJson(res, 201, { reward_id: rewardId, member_id: memberId, points_spent: Number(reward.points_cost), points_balance: balance });
-  }
-  if (pathname === "/api/admin/points/earn") {
-    const memberId = typeof payload.member_id === "string" ? payload.member_id.trim() : "";
-    const amount = payload.amount;
-    if (!memberId || !Number.isSafeInteger(amount) || amount < 1 || amount > 1_000_000_000) {
-      return sendError(res, 400, "Pelanggan dan nilai transaksi yang valid wajib diisi.");
-    }
-    const settings = await getLoyaltySettings(client);
-    const points = calculatePurchasePoints(amount, settings);
-    if (points < 1) return sendError(res, 400, "Nilai transaksi belum mencapai batas minimum perolehan poin.");
-    const balance = await recordPointsTransaction(
-      client,
-      memberId,
-      points,
-      "purchase",
-      `Poin dari transaksi Rp${amount.toLocaleString("id-ID")}`,
-      { purchaseAmount: amount },
-    );
-    return sendJson(res, 201, { member_id: memberId, amount, points_awarded: points, points_balance: balance });
   }
   if (pathname === "/api/admin/points/adjust") {
     const memberId = typeof payload.member_id === "string" ? payload.member_id.trim() : "";
@@ -1135,22 +1270,12 @@ async function handleAdminPost(client, req, res, pathname) {
     const promo = promoResult.rows[0];
     if (!promo) return sendError(res, 400, "Promo tidak aktif atau di luar masa berlaku.");
     const claimedAt = nowMs();
-    const settings = await getLoyaltySettings(client);
-    const claimPoints = settings.points_per_claim;
     const statements = [{
         sql: `INSERT INTO promo_claims
               (promo_id, promo_title, member_id, customer_name, claimed_at)
               VALUES (?, ?, ?, ?, ?) RETURNING id`,
         args: [promo.id, promo.title, customer.member_id, customer.name, claimedAt],
       }];
-    if (claimPoints > 0) {
-      statements.push(pointsTransactionStatement(
-        customer.member_id,
-        claimPoints,
-        "promo_claim",
-        `Poin dari klaim promo: ${promo.title}`,
-      ));
-    }
     const results = await client.batch(statements, "write");
     return sendJson(res, 201, {
       id: results[0].rows[0].id,
@@ -1159,7 +1284,6 @@ async function handleAdminPost(client, req, res, pathname) {
       member_id: customer.member_id,
       customer_name: customer.name,
       claimed_at: claimedAt,
-      points_awarded: claimPoints,
     });
   }
   return sendError(res, 404, "Endpoint tidak ditemukan.");
@@ -1196,20 +1320,6 @@ async function handleApi(client, req, res) {
     const session = await requireSession(client, req, res, "customer");
     if (!session) return;
     return sendJson(res, 200, await getCustomerLoyalty(client, session.member_id));
-  }
-  if (method === "GET" && pathname === "/api/customer/qr") {
-    const session = await requireSession(client, req, res, "customer");
-    if (!session) return;
-    const result = await client.execute("SELECT qr_code FROM customers WHERE member_id = ?", [session.member_id]);
-    const image = result.rows[0]?.qr_code;
-    if (!image) return sendError(res, 404, "QR Code member tidak ditemukan.");
-    const body = Buffer.from(image);
-    return res.writeHead(200, {
-      "Content-Type": "image/png",
-      "Content-Length": body.length,
-      "Cache-Control": "private, no-store",
-      "X-Content-Type-Options": "nosniff",
-    }).end(body);
   }
   if (method === "POST" && pathname.startsWith("/api/admin/")) {
     if (pathname === "/api/admin/login") return loginAdmin(client, req, res);
@@ -1390,7 +1500,6 @@ module.exports = {
   createDatabaseClient,
   createHandler,
   createLocalServer,
-  generateMemberQr,
   hashPassword,
   initializeDatabase,
   sessionTokenHash,
