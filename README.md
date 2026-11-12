@@ -1,6 +1,6 @@
-# BrewClub
+# MONT
 
-Website loyalty BrewClub dengan backend Node.js, database SQLite/Turso, autentikasi pelanggan, poin/reward manual, tier berbasis nominal transaksi, promo, dan panel admin.
+Website loyalty MONT dengan backend Node.js, database SQLite/Turso, autentikasi pelanggan, poin/reward manual, tier berbasis nominal transaksi, promo, dan panel admin.
 
 ## Menjalankan secara lokal
 
@@ -17,7 +17,7 @@ npm.cmd start
 
 Ganti `CHANGE_ME` dengan kata sandi acak minimal 16 karakter sebelum menjalankan server; nilai contoh akan ditolak oleh backend.
 
-Buka [http://127.0.0.1:8000](http://127.0.0.1:8000). Jangan membuka file HTML secara langsung; halaman membutuhkan backend. SQLite lokal tersimpan di `%USERPROFILE%\.brewclub\customers.sqlite3`, atau gunakan `BREWCLUB_DATABASE` untuk menentukan lokasi lain.
+Buka [http://127.0.0.1:8000](http://127.0.0.1:8000). Jangan membuka file HTML secara langsung; halaman membutuhkan backend. SQLite lokal tersimpan di `%USERPROFILE%\.mont\customers.sqlite3`, atau gunakan `MONT_DATABASE` untuk menentukan lokasi lain.
 
 Jalankan pengujian dengan:
 
@@ -52,7 +52,7 @@ Vercel mewajibkan Turso karena filesystem function tidak persisten. Jangan memak
 
 Deploy ini menjalankan backend Node.js pada jaringan internal Compose dan Caddy sebagai reverse proxy HTTPS. Dibutuhkan server dengan Docker Engine/Compose, domain yang DNS-nya mengarah ke server, serta port TCP 80/443 yang dapat dijangkau dari internet.
 
-1. Salin `.env.example` menjadi `.env`, lalu isi `BREWCLUB_DOMAIN`, `BASE_URL`, kredensial admin acak, serta konfigurasi Resend jika diperlukan.
+1. Salin `.env.example` menjadi `.env`, lalu isi `MONT_DOMAIN`, `BASE_URL`, kredensial admin acak, serta konfigurasi Resend jika diperlukan.
 2. Pastikan DNS dan firewall siap, kemudian jalankan:
 
    ```sh
@@ -63,16 +63,16 @@ Deploy ini menjalankan backend Node.js pada jaringan internal Compose dan Caddy 
 
 3. Buka `https://<domain>` dan periksa `/api/health`. Jangan mengekspos port 8000 langsung ke internet.
 
-Caddy mengurus sertifikat TLS otomatis setelah DNS dan port tersedia. Data SQLite disimpan di volume Docker `brewclub-data`; sertifikat dan konfigurasi Caddy juga disimpan di volume persisten. Menghapus volume Docker dapat menghapus data pelanggan.
+Caddy mengurus sertifikat TLS otomatis setelah DNS dan port tersedia. Data SQLite disimpan di volume Docker `mont-data`; sertifikat dan konfigurasi Caddy juga disimpan di volume persisten. Menghapus volume Docker dapat menghapus data pelanggan.
 
 Untuk memakai database SQLite lama di Docker, hentikan app sebelum menyalin database ke volume yang benar. Jangan menimpa database yang sudah berisi pendaftaran produksi. Buat dan verifikasi backup sebelum migrasi.
 
 ## Backup database SQLite lokal
 
-Atur `BREWCLUB_DATABASE` ke database lokal, lalu jalankan:
+Atur `MONT_DATABASE` ke database lokal, lalu jalankan:
 
 ```powershell
-$env:BREWCLUB_DATABASE = "$HOME\.brewclub\customers.sqlite3"
+$env:MONT_DATABASE = "$HOME\.mont\customers.sqlite3"
 npm.cmd run backup -- .\backups
 ```
 

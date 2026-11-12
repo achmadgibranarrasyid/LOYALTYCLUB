@@ -310,7 +310,7 @@ test("API, manual loyalty, admin tiers and claims, and static-file allowlist wor
   for (const payload of [
     { name: "Minuman Gratis", type: "free_drink", description: "Pilih menu reguler", points_cost: 4 },
     { name: "Diskon Rp10.000", type: "discount", points_cost: 4, discount_amount: 10000 },
-    { name: "Merchandise", type: "custom", description: "Tumbler BrewClub", points_cost: 5 },
+    { name: "Merchandise", type: "custom", description: "Tumbler MONT", points_cost: 5 },
   ]) {
     rewards.push(await request("/api/admin/rewards", {
       method: "POST",
@@ -322,7 +322,7 @@ test("API, manual loyalty, admin tiers and claims, and static-file allowlist wor
   const updatedReward = await request(`/api/admin/rewards/${rewards[2].body.id}`, {
     method: "PUT",
     cookie: adminCookie,
-    payload: { name: "Merchandise BrewClub", type: "custom", description: "Tumbler edisi baru", points_cost: 5 },
+    payload: { name: "Merchandise MONT", type: "custom", description: "Tumbler edisi baru", points_cost: 5 },
   });
   assert.equal(updatedReward.response.status, 200);
   const disabledReward = await request(`/api/admin/rewards/${rewards[2].body.id}/active`, {
@@ -418,7 +418,7 @@ test("password reset only reports success after the email provider accepts the m
   };
   const originalFetch = globalThis.fetch;
   process.env.BASE_URL = origin;
-  process.env.EMAIL_FROM = "BrewClub <verified@example.com>";
+  process.env.EMAIL_FROM = "MONT <verified@example.com>";
   process.env.RESEND_API_KEY = "test-resend-key";
   t.after(async () => {
     globalThis.fetch = originalFetch;

@@ -1,5 +1,5 @@
-const STORE_KEY = 'brewclub_v3';
-const LEGACY_STORE_KEY = 'brewclub_v2';
+const STORE_KEY = 'mont_v3';
+const LEGACY_STORE_KEY = 'mont_v2';
 
 // Utility
 const $ = (s, el = document) => el.querySelector(s);

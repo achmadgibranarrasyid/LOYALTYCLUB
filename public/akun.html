@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Akun Member — BrewClub</title>
+<title>Akun Member — MONT</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -46,14 +46,14 @@
     <section class="loyalty-account" aria-labelledby="loyaltyHeading">
       <div class="loyalty-balance">
         <div>
-          <span class="eyebrow">Loyalty BrewClub</span>
+          <span class="eyebrow">Loyalty MONT</span>
           <h2 id="loyaltyHeading">Poin member</h2>
         </div>
         <p><strong id="pointsBalance">—</strong><span>poin</span></p>
       </div>
       <p class="loyalty-copy">Total transaksi tercatat: <strong id="totalSpend">Rp0</strong></p>
       <p class="loyalty-copy" id="tierProgress"></p>
-      <p class="loyalty-copy">Saldo poin dikelola manual oleh BrewClub. Untuk mengenali akunmu, sebutkan nama, email, atau nomor telepon terdaftar.</p>
+      <p class="loyalty-copy">Saldo poin dikelola manual oleh MONT. Untuk mengenali akunmu, sebutkan nama, email, atau nomor telepon terdaftar.</p>
       <p class="loyalty-tier" id="memberTierDescription"></p>
       <p class="err" id="loyaltyError" role="alert"></p>
       <div class="loyalty-columns">
@@ -92,7 +92,7 @@
       : 'Kamu telah mencapai tier tertinggi.';
     document.getElementById('memberTierDescription').textContent = tier
       ? tier.description || 'Tier ditentukan otomatis berdasarkan total nominal transaksimu.'
-      : 'Tier belum ditetapkan. Silakan hubungi BrewClub untuk informasi.';
+      : 'Tier belum ditetapkan. Silakan hubungi MONT untuk informasi.';
 
     const rewards = document.getElementById('memberRewards');
     rewards.replaceChildren();
@@ -177,8 +177,8 @@
   // Cek Autentikasi saat halaman dimuat
   getCustomerSession().then(async session => {
     if (!session.authenticated || !session.customer) {
-      localStorage.removeItem('brewclub_v3');
-      localStorage.removeItem('brewclub_v2');
+      localStorage.removeItem('mont_v3');
+      localStorage.removeItem('mont_v2');
       window.location.replace('login.html');
       return;
     }

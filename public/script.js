@@ -1,18 +1,18 @@
 /* =========================================================
    STORAGE & HELPERS
    ========================================================= */
-const STORE_KEY = 'brewclub_v3';
+const STORE_KEY = 'mont_v3';
 const $  = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 
 function getUser() {
   try {
-    const savedUser = localStorage.getItem(STORE_KEY) || localStorage.getItem('brewclub_v2');
+    const savedUser = localStorage.getItem(STORE_KEY) || localStorage.getItem('mont_v2');
     if (!savedUser) return null;
     const user = JSON.parse(savedUser) || null;
     if (user && !localStorage.getItem(STORE_KEY)) {
       localStorage.setItem(STORE_KEY, JSON.stringify(user));
-      localStorage.removeItem('brewclub_v2');
+      localStorage.removeItem('mont_v2');
     }
     return user;
   }
@@ -21,12 +21,12 @@ function getUser() {
 
 function saveUser(user) {
   localStorage.setItem(STORE_KEY, JSON.stringify(user));
-  localStorage.removeItem('brewclub_v2');
+  localStorage.removeItem('mont_v2');
 }
 
 function removeUser() {
   localStorage.removeItem(STORE_KEY);
-  localStorage.removeItem('brewclub_v2');
+  localStorage.removeItem('mont_v2');
 }
 
 /* =========================================================

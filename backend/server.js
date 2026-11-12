@@ -126,7 +126,7 @@ function createDatabaseClient(options = {}) {
     });
   }
   const databasePath = path.resolve(
-    options.databasePath || env.BREWCLUB_DATABASE || path.join(os.homedir(), ".brewclub", "customers.sqlite3"),
+    options.databasePath || env.MONT_DATABASE || path.join(os.homedir(), ".mont", "customers.sqlite3"),
   );
   fs.mkdirSync(path.dirname(databasePath), { recursive: true });
   return createClient({ url: pathToFileURL(databasePath).href });
@@ -411,7 +411,7 @@ function sendError(res, status, message) {
 }
 
 function sendCookie(res, token, role, maxAge = SESSION_DURATION_MS / 1000) {
-  const name = role === "admin" ? "brewclub_admin" : "brewclub_customer";
+  const name = role === "admin" ? "mont_admin" : "mont_customer";
   const parts = [
     `${name}=${encodeURIComponent(token)}`,
     "Path=/",
@@ -500,7 +500,7 @@ async function clearRateLimit(client, action, address) {
 }
 
 async function getSession(client, req, role) {
-  const cookieName = role === "admin" ? "brewclub_admin" : "brewclub_customer";
+  const cookieName = role === "admin" ? "mont_admin" : "mont_customer";
   const token = parseCookies(req.headers.cookie)[cookieName];
   if (!token) return null;
   const result = await client.execute({
@@ -718,7 +718,7 @@ async function sendCustomerCsv(client, res, search) {
   const body = Buffer.from(`\uFEFF${rows.map((row) => row.map(csvEscape).join(",")).join("\r\n")}`, "utf8");
   res.writeHead(200, {
     "Content-Type": "text/csv; charset=utf-8",
-    "Content-Disposition": 'attachment; filename="pelanggan-brewclub.csv"',
+    "Content-Disposition": 'attachment; filename="pelanggan-mont.csv"',
     "Content-Length": body.length,
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
@@ -951,8 +951,8 @@ async function sendPasswordResetEmail(email, token) {
     body: JSON.stringify({
       from: EMAIL_FROM,
       to: [email],
-      subject: "Atur ulang kata sandi BrewClub",
-      text: `Gunakan tautan berikut untuk mengatur ulang kata sandi BrewClub. Tautan berlaku 1 jam dan hanya dapat digunakan sekali:\n\n${resetUrl}\n\nJika Anda tidak meminta pengaturan ulang, abaikan email ini.`,
+      subject: "Atur ulang kata sandi MONT",
+      text: `Gunakan tautan berikut untuk mengatur ulang kata sandi MONT. Tautan berlaku 1 jam dan hanya dapat digunakan sekali:\n\n${resetUrl}\n\nJika Anda tidak meminta pengaturan ulang, abaikan email ini.`,
     }),
     signal: AbortSignal.timeout(10_000),
   });
@@ -1003,7 +1003,7 @@ async function registerCustomer(client, req, res) {
 }
 
 function sessionCookie(token, role, maxAge = SESSION_DURATION_MS / 1000) {
-  const name = role === "admin" ? "brewclub_admin" : "brewclub_customer";
+  const name = role === "admin" ? "mont_admin" : "mont_customer";
   const parts = [`${name}=${encodeURIComponent(token)}`, "Path=/", "HttpOnly", "SameSite=Strict", `Max-Age=${maxAge}`];
   if (process.env.NODE_ENV === "production" || process.env.VERCEL) parts.push("Secure");
   return parts.join("; ");
@@ -1142,7 +1142,7 @@ async function loginAdmin(client, req, res) {
 
 async function logout(client, req, res, role) {
   if (!hasValidOrigin(req)) return sendError(res, 403, "Asal request tidak diizinkan.");
-  const name = role === "admin" ? "brewclub_admin" : "brewclub_customer";
+  const name = role === "admin" ? "mont_admin" : "mont_customer";
   const token = parseCookies(req.headers.cookie)[name];
   if (token) {
     await client.execute("DELETE FROM auth_sessions WHERE token_hash = ? AND role = ?", [sessionTokenHash(token), role]);
@@ -1458,7 +1458,7 @@ function createHandler(client, options = {}) {
         return;
       }
       if (error.status) return sendError(res, error.status, error.message);
-      console.error("Kesalahan backend BrewClub:", error.message);
+      console.error("Kesalahan backend MONT:", error.message);
       sendError(res, 500, "Permintaan gagal diproses.");
     }
   };
@@ -1468,7 +1468,7 @@ function createLocalServer(options = {}) {
   const client = options.client || createDatabaseClient(options);
   const handler = createHandler(client, { allowStatic: true });
   const server = http.createServer(handler);
-  server.brewclubClient = client;
+  server.montClient = client;
   server.on("close", () => client.close());
   return server;
 }
@@ -1477,21 +1477,21 @@ async function main() {
   const port = Number(process.env.PORT || 8000);
   const server = createLocalServer();
   try {
-    await initializeDatabase(server.brewclubClient);
+    await initializeDatabase(server.montClient);
   } catch (error) {
-    console.error("Database BrewClub gagal dibuka:", error.message);
+    console.error("Database MONT gagal dibuka:", error.message);
     server.close();
     process.exitCode = 1;
     return;
   }
   server.listen(port, process.env.HOST || "0.0.0.0", () => {
-    console.log(`BrewClub Node.js berjalan pada port ${port}`);
+    console.log(`MONT Node.js berjalan pada port ${port}`);
   });
 }
 
 if (require.main === module) {
   main().catch((error) => {
-    console.error("Server BrewClub gagal dijalankan:", error.message);
+    console.error("Server MONT gagal dijalankan:", error.message);
     process.exitCode = 1;
   });
 }

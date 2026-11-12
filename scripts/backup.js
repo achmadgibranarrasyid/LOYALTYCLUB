@@ -10,7 +10,7 @@ async function main() {
     throw new Error("Backup ini hanya mendukung database SQLite lokal. Gunakan fitur ekspor Turso untuk database jarak jauh.");
   }
   const databasePath = path.resolve(
-    process.env.BREWCLUB_DATABASE || path.join(require("node:os").homedir(), ".brewclub", "customers.sqlite3"),
+    process.env.MONT_DATABASE || path.join(require("node:os").homedir(), ".mont", "customers.sqlite3"),
   );
   if (!fs.existsSync(databasePath)) throw new Error(`Database tidak ditemukan: ${databasePath}`);
 
