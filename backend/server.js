@@ -1529,7 +1529,12 @@ async function handleApi(client, req, res) {
   const query = parsed.searchParams;
 
   if (method === "GET" && pathname === "/api/health") {
-    await client.execute("SELECT 1");
+    try {
+      await client.execute("SELECT 1");
+    } catch (error) {
+      console.error("Database health check gagal:", error.message);
+      return sendJson(res, 503, { status: "db_error", detail: error.message });
+    }
     return sendJson(res, 200, { status: "ok" });
   }
   if (method === "GET" && pathname === "/api/promos") return sendJson(res, 200, await listPromos(client, true));
