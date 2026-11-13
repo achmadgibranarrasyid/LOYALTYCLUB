@@ -159,6 +159,32 @@ function buildPromoCard(promo) {
     card.append(validity);
   }
 
+  const maxClaims = Number(promo.max_claims || 0);
+  if (maxClaims > 0) {
+    const used = Math.min(Number(promo.claims_used || 0), maxClaims);
+    const remaining = Math.max(maxClaims - used, 0);
+    const quota = document.createElement('div');
+    quota.className = 'promo-quota';
+    const quotaLabel = document.createElement('small');
+    quotaLabel.className = 'quota-label';
+    quotaLabel.textContent = remaining > 0
+      ? `Kuota promo: sisa ${remaining} dari ${maxClaims}x`
+      : `Kuota promo: habis (${used}/${maxClaims})`;
+    const bar = document.createElement('div');
+    bar.className = 'quota-bar';
+    bar.setAttribute('role', 'progressbar');
+    bar.setAttribute('aria-valuemin', '0');
+    bar.setAttribute('aria-valuemax', String(maxClaims));
+    bar.setAttribute('aria-valuenow', String(used));
+    const fill = document.createElement('div');
+    fill.className = 'quota-fill';
+    fill.style.width = `${Math.round((used / maxClaims) * 100)}%`;
+    if (remaining === 0) fill.classList.add('is-full');
+    bar.append(fill);
+    quota.append(quotaLabel, bar);
+    card.append(quota);
+  }
+
   if (promo.price_old || promo.price_new) {
     const prices = document.createElement('div');
     prices.className = 'price-row';
@@ -179,7 +205,12 @@ function buildPromoCard(promo) {
 
   const button = document.createElement('button');
   button.className = 'btn btn-accent claim-btn';
-  button.textContent = promo.category === 'bundling' ? 'Pesan Bundling' : 'Klaim Diskon';
+  if (maxClaims > 0 && Number(promo.claims_used || 0) >= maxClaims) {
+    button.disabled = true;
+    button.textContent = 'Kuota Habis';
+  } else {
+    button.textContent = promo.category === 'bundling' ? 'Pesan Bundling' : 'Klaim Diskon';
+  }
   card.append(button);
   return card;
 }

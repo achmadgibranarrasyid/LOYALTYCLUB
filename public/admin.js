@@ -169,7 +169,11 @@ function renderPromos(promos) {
     card.className = 'admin-promo-item';
     const details = document.createElement('div');
     const title = setText(document.createElement('strong'), promo.title);
-    const meta = setText(document.createElement('p'), `${promo.label} · ${promo.category === 'bundling' ? 'Bundling' : 'Diskon'}${Number(promo.max_claims || 0) > 0 ? ` · Kuota ${promo.max_claims} klaim` : ' · Tanpa batas klaim'}`);
+    const usedClaims = Number(promo.claims_used || 0);
+    const quotaText = Number(promo.max_claims || 0) > 0
+      ? ` · Kuota ${promo.max_claims} klaim (terpakai ${Math.min(usedClaims, Number(promo.max_claims))})`
+      : ' · Tanpa batas klaim';
+    const meta = setText(document.createElement('p'), `${promo.label} · ${promo.category === 'bundling' ? 'Bundling' : 'Diskon'}${quotaText}`);
     const description = setText(document.createElement('p'), promo.description);
     const current = isPromoCurrent(promo);
     const statusText = !promo.active ? 'Nonaktif' : !current ? 'Di luar masa berlaku' : 'Aktif';

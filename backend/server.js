@@ -801,13 +801,15 @@ async function claimCustomerLookup(client, rawSearch) {
 }
 
 async function listPromos(client, activeOnly) {
+  const claimsUsedSql =
+    "(SELECT COUNT(*) FROM promo_claims c WHERE c.promo_id = promos.id AND c.status != 'rejected') AS claims_used";
   if (!activeOnly) {
-    const result = await client.execute("SELECT * FROM promos ORDER BY category, id");
+    const result = await client.execute(`SELECT promos.*, ${claimsUsedSql} FROM promos ORDER BY category, id`);
     return result.rows;
   }
   const today = new Date().toISOString().slice(0, 10);
   const result = await client.execute({
-    sql: `SELECT * FROM promos WHERE active = 1
+    sql: `SELECT promos.*, ${claimsUsedSql} FROM promos WHERE active = 1
           AND (starts_on IS NULL OR starts_on = '' OR starts_on <= ?)
           AND (ends_on IS NULL OR ends_on = '' OR ends_on >= ?)
           ORDER BY category, id`,

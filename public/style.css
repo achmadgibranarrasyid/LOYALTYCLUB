@@ -546,6 +546,12 @@ footer{border-top:1px solid var(--line);padding:48px 0 36px;margin-top:auto}
 .verify-result{margin-top:12px;padding:14px 16px;border:1px solid var(--line);border-left:4px solid #29491f;border-radius:12px;background:var(--surface)}
 .verify-result strong{display:block;margin-bottom:4px}
 .claim-code-box{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;padding:12px 14px;border:2px dashed var(--gold);border-radius:12px;background:#FFFBEE}
+.promo-quota{margin:10px 0 4px}
+.quota-label{display:block;margin-bottom:5px;color:var(--muted);font-weight:600}
+.quota-bar{height:8px;border-radius:99px;background:rgba(0,0,0,.08);overflow:hidden}
+.quota-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent),#E0A93E);transition:width .4s ease}
+.quota-fill.is-full{background:#C0392B}
+
 .claim-code-box strong{font-size:20px;letter-spacing:.08em;font-family:'Plus Jakarta Sans',sans-serif}
 .claim-code-modal{position:fixed;inset:0;z-index:120;display:flex;align-items:center;justify-content:center;background:rgba(20,28,18,.55);padding:20px}
 .claim-code-modal.hidden{display:none}
