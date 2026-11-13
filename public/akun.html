@@ -69,10 +69,28 @@
     </section>
 
     <div class="info-box">
-      <h4>Panduan Klaim Promo</h4>
-      <p>Sebutkan nama, email, atau nomor telepon terdaftar kepada kasir atau barista untuk mengklaim diskon dan bundling berikut:</p>
+      <h4>Klaim Promo</h4>
+      <p>Pilih promo untuk mengambil kode klaim unik. Tunjukkan kode kepada kasir/barista — kode akan diverifikasi oleh admin.</p>
       <ul id="memberPromos" aria-live="polite"></ul>
       <p class="err" id="memberPromosError" role="alert"></p>
+    </div>
+
+    <div class="info-box">
+      <h4>Kode Klaim Saya</h4>
+      <ul id="myClaimCodes" aria-live="polite"></ul>
+    </div>
+
+    <div class="claim-code-modal hidden" id="claimCodeModal" role="dialog" aria-modal="true" aria-labelledby="claimCodeTitle">
+      <div class="claim-code-modal-inner">
+        <h4 id="claimCodeTitle">Kode klaim berhasil dibuat</h4>
+        <p id="claimCodePromoTitle"></p>
+        <div class="claim-code-box">
+          <strong id="claimCodeValue"></strong>
+          <button class="btn btn-ghost" id="copyClaimCode" type="button">Salin</button>
+        </div>
+        <p class="claim-code-note" id="claimCodeNote">Tunjukkan kode ini kepada kasir/barista. Berlaku selama promo aktif.</p>
+        <button class="btn btn-primary" id="closeClaimCodeModal" type="button">Tutup</button>
+      </div>
     </div>
 
   </div>
@@ -165,7 +183,14 @@
       }
       promos.forEach(promo => {
         const item = document.createElement('li');
-        item.textContent = `${promo.title} — ${promo.description}`;
+        const text = document.createElement('span');
+        text.textContent = `${promo.title} — ${promo.description}${Number(promo.max_claims || 0) > 0 ? ` (Kuota ${promo.max_claims} pembeli)` : ''}`;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn btn-ghost claim-code-btn';
+        button.textContent = 'Ambil Kode Klaim';
+        button.addEventListener('click', () => claimPromoCode(promo.id, promo.title));
+        item.append(text, button);
         list.append(item);
       });
       document.getElementById('memberPromosError').textContent = '';
@@ -173,6 +198,74 @@
       document.getElementById('memberPromosError').textContent = error.message;
     }
   }
+
+  async function claimPromoCode(promoId, promoTitle) {
+    const modal = document.getElementById('claimCodeModal');
+    try {
+      const response = await fetch('/api/customer/promos/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ promo_id: promoId })
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        if (result.existing_code) {
+          showClaimCodeModal(promoTitle, result.existing_code, 'Kamu sudah punya kode aktif untuk promo ini.');
+          return;
+        }
+        throw new Error(result.error || 'Kode klaim gagal dibuat.');
+      }
+      showClaimCodeModal(result.promo_title, result.claim_code);
+      await loadMyClaims();
+    } catch (error) {
+      toast(error.message, 'error');
+    }
+  }
+
+  function showClaimCodeModal(promoTitle, code, note) {
+    document.getElementById('claimCodePromoTitle').textContent = promoTitle;
+    document.getElementById('claimCodeValue').textContent = code;
+    document.getElementById('claimCodeNote')?.replaceChildren(document.createTextNode(note || 'Tunjukkan kode ini kepada kasir/barista. Berlaku selama promo aktif.'));
+    document.getElementById('claimCodeModal').classList.remove('hidden');
+  }
+
+  async function loadMyClaims() {
+    try {
+      const response = await fetch('/api/customer/promo-claims', { credentials: 'same-origin' });
+      const claims = await response.json();
+      if (!response.ok) throw new Error(claims.error || 'Kode klaim gagal dimuat.');
+      const list = document.getElementById('myClaimCodes');
+      list.replaceChildren();
+      if (!claims.length) {
+        list.textContent = 'Belum ada kode klaim. Ambil kode dari daftar promo di atas.';
+        return;
+      }
+      claims.forEach(claim => {
+        const item = document.createElement('li');
+        const label = document.createElement('span');
+        label.textContent = `${claim.promo_title} · ${claim.status === 'pending' ? 'Menunggu verifikasi' : claim.status === 'rejected' ? 'Dibatalkan' : 'Terverifikasi'} · ${new Date(claim.claimed_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}`;
+        const code = document.createElement('strong');
+        code.textContent = claim.claim_code || '—';
+        item.append(label, code);
+        list.append(item);
+      });
+    } catch (error) {
+      toast(error.message, 'error');
+    }
+  }
+
+  document.getElementById('closeClaimCodeModal').addEventListener('click', () => {
+    document.getElementById('claimCodeModal').classList.add('hidden');
+  });
+  document.getElementById('copyClaimCode').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(document.getElementById('claimCodeValue').textContent);
+      toast('Kode klaim disalin.', 'success');
+    } catch {
+      toast('Gagal menyalin kode.', 'error');
+    }
+  });
 
   // Cek Autentikasi saat halaman dimuat
   getCustomerSession().then(async session => {
@@ -189,6 +282,7 @@
     document.getElementById('mPhone').textContent = currentUser.phone;
     await loadLoyalty();
     await loadMemberPromos();
+    await loadMyClaims();
   }).catch(error => {
     console.error('Sesi pelanggan gagal diverifikasi:', error);
     window.location.replace('login.html');

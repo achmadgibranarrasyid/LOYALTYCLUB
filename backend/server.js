@@ -27,6 +27,8 @@ const PUBLIC_STATIC_FILES = new Set([
   "style.css",
 ]);
 const MAX_REQUEST_SIZE = 16_384;
+const PROMO_IMAGE_MAX_LENGTH = 700_000;
+const PROMO_BODY_MAX_SIZE = 750_000;
 const PASSWORD_MIN_LENGTH = 12;
 const ADMIN_PASSWORD_MIN_LENGTH = 16;
 const SESSION_DURATION_MS = 8 * 60 * 60 * 1000;
@@ -38,6 +40,7 @@ const RATE_LIMITS = {
   "customer-login": [10, 15 * 60 * 1000],
   "customer-reset": [5, 60 * 60 * 1000],
   "customer-reset-confirm": [10, 15 * 60 * 1000],
+  "customer-claim": [15, 60 * 60 * 1000],
 };
 const INITIAL_PROMOS = [
   ["diskon", "DISKON 20%", "Diskon 20% Semua Pastry", "Berlaku untuk croissant, danish, cinnamon roll, dan pastry lainnya.", "", ""],
@@ -67,7 +70,7 @@ const SECURE_HEADERS = {
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
   "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
-  "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+  "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
 };
 
 function nowMs() {
@@ -156,6 +159,8 @@ async function initializeDatabase(client) {
       description TEXT NOT NULL,
       price_old TEXT NOT NULL DEFAULT '',
       price_new TEXT NOT NULL DEFAULT '',
+      image_url TEXT NOT NULL DEFAULT '',
+      max_claims INTEGER NOT NULL DEFAULT 0,
       active INTEGER NOT NULL DEFAULT 1
     )`,
     "CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
@@ -165,8 +170,13 @@ async function initializeDatabase(client) {
       promo_title TEXT NOT NULL,
       member_id TEXT NOT NULL,
       customer_name TEXT NOT NULL,
-      claimed_at INTEGER NOT NULL
+      claimed_at INTEGER NOT NULL,
+      claim_code TEXT,
+      status TEXT NOT NULL DEFAULT 'verified',
+      verified_at INTEGER
     )`,
+    "CREATE INDEX IF NOT EXISTS promo_claims_code ON promo_claims (claim_code)",
+    "CREATE INDEX IF NOT EXISTS promo_claims_promo_status ON promo_claims (promo_id, status)",
     `CREATE TABLE IF NOT EXISTS loyalty_transactions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       member_id TEXT NOT NULL,
@@ -252,7 +262,7 @@ async function initializeDatabase(client) {
   }
   const promoColumns = await client.execute("PRAGMA table_info(promos)");
   const existingPromoColumns = new Set(promoColumns.rows.map((row) => row.name));
-  for (const column of ["starts_on", "ends_on"]) {
+  for (const column of ["starts_on", "ends_on", "image_url"]) {
     if (!existingPromoColumns.has(column)) {
       try {
         await client.execute(`ALTER TABLE promos ADD COLUMN ${column} TEXT`);
@@ -261,6 +271,29 @@ async function initializeDatabase(client) {
       }
     }
   }
+  if (!existingPromoColumns.has("max_claims")) {
+    try {
+      await client.execute("ALTER TABLE promos ADD COLUMN max_claims INTEGER NOT NULL DEFAULT 0");
+    } catch (error) {
+      if (!/duplicate column/i.test(error.message)) throw error;
+    }
+  }
+  const claimColumns = await client.execute("PRAGMA table_info(promo_claims)");
+  const existingClaimColumns = new Set(claimColumns.rows.map((row) => row.name));
+  for (const [column, definition] of [
+    ["claim_code", "TEXT"],
+    ["status", "TEXT NOT NULL DEFAULT 'verified'"],
+    ["verified_at", "INTEGER"],
+  ]) {
+    if (!existingClaimColumns.has(column)) {
+      try {
+        await client.execute(`ALTER TABLE promo_claims ADD COLUMN ${column} ${definition}`);
+      } catch (error) {
+        if (!/duplicate column/i.test(error.message)) throw error;
+      }
+    }
+  }
+  await client.execute("CREATE INDEX IF NOT EXISTS promo_claims_code ON promo_claims (claim_code)");
   const tierColumns = await client.execute("PRAGMA table_info(loyalty_tiers)");
   if (!tierColumns.rows.some((row) => row.name === "min_spend")) {
     await client.execute("ALTER TABLE loyalty_tiers ADD COLUMN min_spend INTEGER NOT NULL DEFAULT 0");
@@ -423,7 +456,7 @@ function sendCookie(res, token, role, maxAge = SESSION_DURATION_MS / 1000) {
   res.setHeader("Set-Cookie", parts.join("; "));
 }
 
-async function readJson(req) {
+async function readJson(req, maxSize = MAX_REQUEST_SIZE) {
   const contentType = String(req.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
   if (contentType !== "application/json") {
     const error = new Error("Content-Type harus application/json.");
@@ -434,7 +467,7 @@ async function readJson(req) {
   let length = 0;
   for await (const chunk of req) {
     length += chunk.length;
-    if (length > MAX_REQUEST_SIZE) {
+    if (length > maxSize) {
       const error = new Error("Ukuran data tidak valid atau terlalu besar.");
       error.status = 413;
       throw error;
@@ -791,6 +824,20 @@ function validatePromoDate(value) {
   return Number.isNaN(parsed.valueOf()) || parsed.toISOString().slice(0, 10) !== value ? false : value;
 }
 
+function validatePromoImage(value) {
+  if (value === undefined || value === null) return "";
+  if (typeof value !== "string") throw Object.assign(new Error("Foto promo tidak valid."), { status: 400 });
+  const image = value.trim();
+  if (!image) return "";
+  if (/^https:\/\/[^\s]+$/i.test(image) || /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/i.test(image)) {
+    if (image.length > PROMO_IMAGE_MAX_LENGTH) {
+      throw Object.assign(new Error("Foto promo terlalu besar (maksimal sekitar 500 KB)."), { status: 400 });
+    }
+    return image;
+  }
+  throw Object.assign(new Error("Foto promo harus file gambar (JPG/PNG/WebP/GIF) atau URL https."), { status: 400 });
+}
+
 async function savePromo(client, payload, promoId = null) {
   const category = payload.category;
   if (!["diskon", "bundling"].includes(category)) throw Object.assign(new Error("Kategori promo tidak valid."), { status: 400 });
@@ -801,6 +848,12 @@ async function savePromo(client, payload, promoId = null) {
     throw Object.assign(new Error("Label, judul, atau deskripsi promo tidak valid."), { status: 400 });
   }
   if (normalized[3].length > 40 || normalized[4].length > 40) throw Object.assign(new Error("Harga maksimal 40 karakter."), { status: 400 });
+  const imageUrl = validatePromoImage(payload.image_url);
+  const rawMaxClaims = payload.max_claims ?? 0;
+  if (!Number.isSafeInteger(rawMaxClaims) || rawMaxClaims < 0 || rawMaxClaims > 1_000_000) {
+    throw Object.assign(new Error("Kuota klaim harus berupa angka 0 (tanpa batas) sampai 1.000.000."), { status: 400 });
+  }
+  const maxClaims = rawMaxClaims;
   const rawStart = payload.starts_on ?? "";
   const rawEnd = payload.ends_on ?? "";
   if (typeof rawStart !== "string" || typeof rawEnd !== "string") throw Object.assign(new Error("Tanggal promo tidak valid."), { status: 400 });
@@ -811,16 +864,16 @@ async function savePromo(client, payload, promoId = null) {
   if (promoId === null) {
     const inserted = await client.execute({
       sql: `INSERT INTO promos
-            (category, label, title, description, price_old, price_new, active, starts_on, ends_on)
-            VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?) RETURNING *`,
-      args: [category, ...normalized, startsOn, endsOn],
+            (category, label, title, description, price_old, price_new, image_url, max_claims, active, starts_on, ends_on)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?) RETURNING *`,
+      args: [category, ...normalized, imageUrl, maxClaims, startsOn, endsOn],
     });
     return { status: 201, promo: inserted.rows[0] };
   }
   const updated = await client.execute({
     sql: `UPDATE promos SET category = ?, label = ?, title = ?, description = ?,
-          price_old = ?, price_new = ?, starts_on = ?, ends_on = ? WHERE id = ? RETURNING *`,
-    args: [category, ...normalized, startsOn, endsOn, promoId],
+          price_old = ?, price_new = ?, image_url = ?, max_claims = ?, starts_on = ?, ends_on = ? WHERE id = ? RETURNING *`,
+    args: [category, ...normalized, imageUrl, maxClaims, startsOn, endsOn, promoId],
   });
   if (updated.rows.length === 0) throw Object.assign(new Error("Promo tidak ditemukan."), { status: 404 });
   return { status: 200, promo: updated.rows[0] };
@@ -902,21 +955,131 @@ async function getCustomerLoyalty(client, memberId) {
   };
 }
 
+const CLAIM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+function generateClaimCode() {
+  const bytes = crypto.randomBytes(8);
+  let code = "";
+  for (const byte of bytes) code += CLAIM_CODE_ALPHABET[byte % CLAIM_CODE_ALPHABET.length];
+  return `MONT-${code}`;
+}
+
+function isPromoActiveToday(promo, today) {
+  return Boolean(promo)
+    && Number(promo.active) === 1
+    && (!promo.starts_on || promo.starts_on <= today)
+    && (!promo.ends_on || promo.ends_on >= today);
+}
+
+function todayDateString() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+async function countActiveClaims(client, promoId) {
+  const result = await client.execute(
+    "SELECT COUNT(*) AS count FROM promo_claims WHERE promo_id = ? AND status != 'rejected'",
+    [promoId],
+  );
+  return Number(result.rows[0].count);
+}
+
+async function claimCustomerPromo(client, memberId, customerName, promoId) {
+  if (!Number.isSafeInteger(promoId) || promoId <= 0) {
+    throw Object.assign(new Error("Promo tidak valid."), { status: 400 });
+  }
+  const promoResult = await client.execute("SELECT * FROM promos WHERE id = ?", [promoId]);
+  const promo = promoResult.rows[0];
+  if (!isPromoActiveToday(promo, todayDateString())) {
+    throw Object.assign(new Error("Promo tidak aktif atau di luar masa berlaku."), { status: 400 });
+  }
+  const maxClaims = Number(promo.max_claims || 0);
+  if (maxClaims > 0) {
+    const used = await countActiveClaims(client, promoId);
+    if (used >= maxClaims) {
+      throw Object.assign(new Error("Kuota promo sudah habis."), { status: 409 });
+    }
+  }
+  const duplicate = await client.execute({
+    sql: "SELECT id, claim_code FROM promo_claims WHERE promo_id = ? AND member_id = ? AND status = 'pending' LIMIT 1",
+    args: [promoId, memberId],
+  });
+  if (duplicate.rows.length > 0) {
+    throw Object.assign(new Error("Anda sudah punya kode klaim aktif untuk promo ini.", ), { status: 409, existing_code: duplicate.rows[0].claim_code });
+  }
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const code = generateClaimCode();
+    try {
+      const claimedAt = nowMs();
+      const inserted = await client.execute({
+        sql: `INSERT INTO promo_claims
+              (promo_id, promo_title, member_id, customer_name, claimed_at, claim_code, status)
+              VALUES (?, ?, ?, ?, ?, ?, 'pending') RETURNING *`,
+        args: [promo.id, promo.title, memberId, customerName, claimedAt, code],
+      });
+      return { promo, claim: inserted.rows[0] };
+    } catch (error) {
+      if (!/unique/i.test(String(error.message))) throw error;
+    }
+  }
+  throw Object.assign(new Error("Kode klaim gagal dibuat. Coba lagi."), { status: 500 });
+}
+
+async function verifyClaimCode(client, rawCode) {
+  const code = typeof rawCode === "string" ? rawCode.trim().toUpperCase() : "";
+  if (!/^MONT-[A-HJ-NP-Z2-9]{8}$/.test(code)) {
+    throw Object.assign(new Error("Format kode klaim tidak valid."), { status: 400 });
+  }
+  const claimResult = await client.execute({
+    sql: `SELECT * FROM promo_claims WHERE claim_code = ? AND status = 'pending' LIMIT 1`,
+    args: [code],
+  });
+  const claim = claimResult.rows[0];
+  if (!claim) {
+    throw Object.assign(new Error("Kode klaim tidak ditemukan, sudah digunakan, atau dibatalkan."), { status: 404 });
+  }
+  const promoResult = await client.execute("SELECT * FROM promos WHERE id = ?", [claim.promo_id]);
+  const promo = promoResult.rows[0];
+  if (!isPromoActiveToday(promo, todayDateString())) {
+    await client.execute("UPDATE promo_claims SET status = 'rejected' WHERE id = ?", [claim.id]);
+    throw Object.assign(new Error("Promo sudah tidak aktif. Kode klaim dibatalkan."), { status: 409 });
+  }
+  const maxClaims = Number(promo.max_claims || 0);
+  if (maxClaims > 0) {
+    const used = await countActiveClaims(client, claim.promo_id);
+    if (used > maxClaims) {
+      await client.execute("UPDATE promo_claims SET status = 'rejected' WHERE id = ?", [claim.id]);
+      throw Object.assign(new Error("Kuota promo sudah habis. Kode klaim dibatalkan."), { status: 409 });
+    }
+  }
+  const verifiedAt = nowMs();
+  const updated = await client.execute({
+    sql: "UPDATE promo_claims SET status = 'verified', verified_at = ? WHERE id = ? AND status = 'pending' RETURNING *",
+    args: [verifiedAt, claim.id],
+  });
+  if (updated.rows.length === 0) {
+    throw Object.assign(new Error("Kode klaim tidak ditemukan, sudah digunakan, atau dibatalkan."), { status: 404 });
+  }
+  return { claim: updated.rows[0], promo };
+}
+
+const ANALYTICS_ACTIVE_CLAIMS = "status != 'rejected'";
+
 async function getAnalytics(client) {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
   start.setDate(start.getDate() - 6);
   const startTimestamp = start.getTime();
   const [total, lastWeek, dailyRows, topPromos] = await Promise.all([
-    client.execute("SELECT COUNT(*) AS count FROM promo_claims"),
-    client.execute("SELECT COUNT(*) AS count FROM promo_claims WHERE claimed_at >= ?", [startTimestamp]),
+    client.execute(`SELECT COUNT(*) AS count FROM promo_claims WHERE ${ANALYTICS_ACTIVE_CLAIMS}`),
+    client.execute(`SELECT COUNT(*) AS count FROM promo_claims WHERE ${ANALYTICS_ACTIVE_CLAIMS} AND claimed_at >= ?`, [startTimestamp]),
     client.execute(
       `SELECT date(claimed_at / 1000, 'unixepoch', 'localtime') AS day, COUNT(*) AS count
-       FROM promo_claims WHERE claimed_at >= ? GROUP BY day`,
+       FROM promo_claims WHERE ${ANALYTICS_ACTIVE_CLAIMS} AND claimed_at >= ? GROUP BY day`,
       [startTimestamp],
     ),
     client.execute(
       `SELECT promo_title AS title, COUNT(*) AS count FROM promo_claims
+       WHERE ${ANALYTICS_ACTIVE_CLAIMS}
        GROUP BY promo_title ORDER BY count DESC, title LIMIT 5`,
     ),
   ]);
@@ -1039,6 +1202,47 @@ async function customerLogin(client, req, res) {
   const token = await createSession(client, "customer", { memberId: customer.id });
   const { password_hash: _passwordHash, ...safeCustomer } = customer;
   sendJson(res, 200, safeCustomer, { "Set-Cookie": sessionCookie(token, "customer") });
+}
+
+async function claimCustomerPromoHandler(client, req, res) {
+  if (!hasValidOrigin(req)) return sendError(res, 403, "Asal request tidak diizinkan.");
+  const session = await requireSession(client, req, res, "customer");
+  if (!session) return;
+  const address = getClientAddress(req);
+  if (await isRateLimited(client, "customer-claim", address)) {
+    return sendError(res, 429, "Terlalu banyak permintaan kode klaim. Coba lagi dalam 1 jam.");
+  }
+  await recordRateAttempt(client, "customer-claim", address);
+  const payload = await readJson(req);
+  const customerResult = await client.execute("SELECT member_id, name FROM customers WHERE member_id = ?", [session.member_id]);
+  const customer = customerResult.rows[0];
+  if (!customer) return sendError(res, 404, "Pelanggan tidak ditemukan.");
+  try {
+    const result = await claimCustomerPromo(client, customer.member_id, customer.name, payload.promo_id);
+    await clearRateLimit(client, "customer-claim", address);
+    return sendJson(res, 201, {
+      claim_id: result.claim.id,
+      promo_id: result.promo.id,
+      promo_title: result.promo.title,
+      claim_code: result.claim.claim_code,
+      claimed_at: result.claim.claimed_at,
+    });
+  } catch (error) {
+    if (error.existing_code) {
+      return sendJson(res, error.status || 409, { error: error.message, existing_code: error.existing_code });
+    }
+    return sendError(res, error.status || 500, error.message);
+  }
+}
+
+async function listCustomerClaims(client, req, res) {
+  const session = await requireSession(client, req, res, "customer");
+  if (!session) return;
+  const result = await client.execute({
+    sql: "SELECT id, promo_id, promo_title, claimed_at, claim_code, status, verified_at FROM promo_claims WHERE member_id = ? ORDER BY claimed_at DESC LIMIT 50",
+    args: [session.member_id],
+  });
+  return sendJson(res, 200, result.rows);
 }
 
 async function forgotPassword(client, req, res) {
@@ -1171,17 +1375,19 @@ async function handleAdminGet(client, req, res, pathname, query) {
   }
   if (pathname === "/api/admin/claims") {
     const claims = await client.execute(
-      `SELECT id, promo_id, promo_title, customer_name, claimed_at
+      `SELECT id, promo_id, promo_title, customer_name, claimed_at, claim_code, status, verified_at
        FROM promo_claims ORDER BY claimed_at DESC LIMIT 500`,
     );
     return sendJson(res, 200, claims.rows);
   }
   if (pathname === "/api/admin/analytics") return sendJson(res, 200, await getAnalytics(client));
+  if (pathname === "/api/admin/analytics") return sendJson(res, 200, await getAnalytics(client));
   return sendError(res, 404, "Endpoint tidak ditemukan.");
 }
 
 async function handleAdminPost(client, req, res, pathname) {
-  const payload = await readJson(req);
+  const maxSize = /^\/api\/admin\/promos(\/\d+)?$/.test(pathname) ? PROMO_BODY_MAX_SIZE : MAX_REQUEST_SIZE;
+  const payload = await readJson(req, maxSize);
   if (pathname === "/api/admin/tiers/settings") {
     return sendJson(res, 200, await saveTierSettings(client, payload));
   }
@@ -1253,6 +1459,24 @@ async function handleAdminPost(client, req, res, pathname) {
     const saved = await savePromo(client, payload);
     return sendJson(res, saved.status, saved.promo);
   }
+  if (pathname === "/api/admin/claims/verify") {
+    const code = typeof payload.code === "string" ? payload.code : "";
+    try {
+      const result = await verifyClaimCode(client, code);
+      return sendJson(res, 200, {
+        id: result.claim.id,
+        claim_code: result.claim.claim_code,
+        promo_id: result.promo.id,
+        promo_title: result.promo.title,
+        member_id: result.claim.member_id,
+        customer_name: result.claim.customer_name,
+        claimed_at: result.claim.claimed_at,
+        verified_at: result.claim.verified_at,
+      });
+    } catch (error) {
+      return sendError(res, error.status || 500, error.message);
+    }
+  }
   if (pathname === "/api/admin/claims") {
     const memberId = typeof payload.member_id === "string" ? payload.member_id.trim() : "";
     const promoId = payload.promo_id;
@@ -1269,11 +1493,15 @@ async function handleAdminPost(client, req, res, pathname) {
     });
     const promo = promoResult.rows[0];
     if (!promo) return sendError(res, 400, "Promo tidak aktif atau di luar masa berlaku.");
+    const maxClaims = Number(promo.max_claims || 0);
+    if (maxClaims > 0 && (await countActiveClaims(client, promo.id)) >= maxClaims) {
+      return sendError(res, 409, "Kuota promo sudah habis.");
+    }
     const claimedAt = nowMs();
     const statements = [{
         sql: `INSERT INTO promo_claims
-              (promo_id, promo_title, member_id, customer_name, claimed_at)
-              VALUES (?, ?, ?, ?, ?) RETURNING id`,
+              (promo_id, promo_title, member_id, customer_name, claimed_at, status)
+              VALUES (?, ?, ?, ?, ?, 'verified') RETURNING id`,
         args: [promo.id, promo.title, customer.member_id, customer.name, claimedAt],
       }];
     const results = await client.batch(statements, "write");
@@ -1325,6 +1553,8 @@ async function handleApi(client, req, res) {
     if (pathname === "/api/admin/login") return loginAdmin(client, req, res);
     if (pathname === "/api/admin/logout") return logout(client, req, res, "admin");
   }
+  if (method === "POST" && pathname === "/api/customer/promos/claim") return claimCustomerPromoHandler(client, req, res);
+  if (method === "GET" && pathname === "/api/customer/promo-claims") return listCustomerClaims(client, req, res);
   if (method === "POST" && pathname === "/api/customer/logout") return logout(client, req, res, "customer");
   if (method === "POST" && pathname === "/api/customers") return registerCustomer(client, req, res);
   if (method === "POST" && pathname === "/api/customer/login") return customerLogin(client, req, res);
@@ -1350,7 +1580,7 @@ async function handleApi(client, req, res) {
     if (method === "PUT" && promoMatch) {
       const session = await requireSession(client, req, res, "admin", true);
       if (!session) return;
-      const result = await savePromo(client, await readJson(req), Number(promoMatch[1]));
+      const result = await savePromo(client, await readJson(req, PROMO_BODY_MAX_SIZE), Number(promoMatch[1]));
       return sendJson(res, result.status, result.promo);
     }
     if (method === "PUT" && rewardMatch) {

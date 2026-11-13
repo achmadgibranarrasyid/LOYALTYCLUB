@@ -57,6 +57,18 @@
 
     <section class="admin-section">
       <div class="admin-section-heading">
+        <div><h2>Verifikasi kode promo</h2><p class="admin-muted">Masukkan kode klaim yang ditunjukkan pelanggan (format MONT-XXXXXXXX) untuk mencatat klaimnya.</p></div>
+      </div>
+      <form class="form admin-inline-form" id="verifyForm">
+        <div><label for="verifyCode">Kode klaim</label><input id="verifyCode" maxlength="16" placeholder="MONT-XXXXXXXX" autocomplete="off" required></div>
+        <button class="btn btn-primary" type="submit">Verifikasi</button>
+      </form>
+      <p class="err" id="verifyError" role="alert"></p>
+      <div id="verifyResult" class="verify-result hidden" aria-live="polite"></div>
+    </section>
+
+    <section class="admin-section">
+      <div class="admin-section-heading">
         <div><h2>Ringkasan klaim promo</h2><p class="admin-muted">Jumlah klaim yang dicatat setiap hari selama 7 hari terakhir.</p></div>
       </div>
       <div class="claim-chart" id="claimChart" aria-label="Grafik klaim promo dalam 7 hari terakhir"></div>
@@ -92,6 +104,15 @@
           <div class="admin-price-fields">
             <div><label for="promoStartsOn">Mulai berlaku (opsional)</label><input id="promoStartsOn" type="date"></div>
             <div><label for="promoEndsOn">Berakhir (opsional)</label><input id="promoEndsOn" type="date"></div>
+          </div>
+          <label for="promoMaxClaims">Kuota klaim terbatas (opsional)</label>
+          <input id="promoMaxClaims" type="number" min="0" max="1000000" step="1" placeholder="0 = tanpa batas">
+          <label for="promoImage">Foto promo (opsional, maks. 500 KB)</label>
+          <input id="promoImage" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+          <input type="hidden" id="promoImageUrl">
+          <div class="admin-image-preview hidden" id="promoImagePreviewWrap">
+            <img id="promoImagePreview" alt="Pratinjau foto promo">
+            <button class="btn btn-ghost danger" id="removePromoImage" type="button">Hapus foto</button>
           </div>
           <div class="admin-form-actions">
             <button class="btn btn-primary" type="submit">Simpan promo</button>
@@ -195,7 +216,7 @@
       <p class="err" id="claimError" role="alert"></p>
       <div class="admin-table-wrap">
         <table class="admin-table">
-          <thead><tr><th>Waktu</th><th>Pelanggan</th><th>Promo</th></tr></thead>
+          <thead><tr><th>Waktu</th><th>Pelanggan</th><th>Promo</th><th>Kode</th><th>Status</th></tr></thead>
           <tbody id="claimRows"></tbody>
         </table>
       </div>

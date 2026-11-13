@@ -60,9 +60,46 @@ function resetPromoForm() {
   $('#promoId').value = '';
   $('#promoStartsOn').value = '';
   $('#promoEndsOn').value = '';
+  $('#promoMaxClaims').value = '';
+  setPromoImage('');
   $('#promoFormTitle').textContent = 'Tambah promo';
   $('#cancelPromoEdit').classList.add('hidden');
   $('#promoFormError').textContent = '';
+}
+
+const PROMO_IMAGE_MAX_FILE_BYTES = 500 * 1024;
+
+function setPromoImage(dataUrl) {
+  $('#promoImageUrl').value = dataUrl || '';
+  const previewWrap = $('#promoImagePreviewWrap');
+  if (dataUrl) {
+    $('#promoImagePreview').src = dataUrl;
+    previewWrap.classList.remove('hidden');
+  } else {
+    $('#promoImagePreview').removeAttribute('src');
+    previewWrap.classList.add('hidden');
+  }
+}
+
+function readPromoImageFile(file) {
+  if (!file) return;
+  if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type)) {
+    $('#promoError').textContent = 'Foto harus berupa file JPG, PNG, WebP, atau GIF.';
+    return;
+  }
+  if (file.size > PROMO_IMAGE_MAX_FILE_BYTES) {
+    $('#promoError').textContent = `Ukuran foto maksimal 500 KB (${Math.round(file.size / 1024)} KB).`;
+    return;
+  }
+  const reader = new FileReader();
+  reader.addEventListener('load', () => {
+    setPromoImage(typeof reader.result === 'string' ? reader.result : '');
+    $('#promoError').textContent = '';
+  });
+  reader.addEventListener('error', () => {
+    $('#promoError').textContent = 'Foto gagal dibaca. Coba file lain.';
+  });
+  reader.readAsDataURL(file);
 }
 
 function resetRewardForm() {
@@ -105,6 +142,9 @@ function editPromo(promo) {
   $('#promoPriceNew').value = promo.price_new;
   $('#promoStartsOn').value = promo.starts_on || '';
   $('#promoEndsOn').value = promo.ends_on || '';
+  $('#promoMaxClaims').value = Number(promo.max_claims || 0) > 0 ? promo.max_claims : '';
+  setPromoImage(promo.image_url || '');
+  $('#promoImage').value = '';
   $('#promoFormTitle').textContent = 'Edit promo';
   $('#cancelPromoEdit').classList.remove('hidden');
   $('#promoFormError').textContent = '';
@@ -129,7 +169,7 @@ function renderPromos(promos) {
     card.className = 'admin-promo-item';
     const details = document.createElement('div');
     const title = setText(document.createElement('strong'), promo.title);
-    const meta = setText(document.createElement('p'), `${promo.label} · ${promo.category === 'bundling' ? 'Bundling' : 'Diskon'}`);
+    const meta = setText(document.createElement('p'), `${promo.label} · ${promo.category === 'bundling' ? 'Bundling' : 'Diskon'}${Number(promo.max_claims || 0) > 0 ? ` · Kuota ${promo.max_claims} klaim` : ' · Tanpa batas klaim'}`);
     const description = setText(document.createElement('p'), promo.description);
     const current = isPromoCurrent(promo);
     const statusText = !promo.active ? 'Nonaktif' : !current ? 'Di luar masa berlaku' : 'Aktif';
@@ -140,6 +180,13 @@ function renderPromos(promos) {
       `Berlaku: ${promo.starts_on || 'sekarang'} – ${promo.ends_on || 'seterusnya'}`
     );
     details.append(title, meta, description, validity, status);
+    if (promo.image_url) {
+      const thumb = document.createElement('img');
+      thumb.className = 'admin-promo-thumb';
+      thumb.src = promo.image_url;
+      thumb.alt = '';
+      details.append(thumb);
+    }
 
     const actions = document.createElement('div');
     actions.className = 'admin-promo-actions';
@@ -423,18 +470,23 @@ function renderClaims(claims) {
   if (!claims.length) {
     const row = document.createElement('tr');
     const cell = setText(document.createElement('td'), 'Belum ada klaim yang dicatat.');
-    cell.colSpan = 3;
+    cell.colSpan = 5;
     row.append(cell);
     rows.append(row);
     return;
   }
   claims.forEach(claim => {
     const row = document.createElement('tr');
+    const statusClass = claim.status === 'pending' ? 'is-pending' : claim.status === 'rejected' ? 'is-rejected' : 'is-active';
+    const statusCell = setText(document.createElement('td'), claim.status === 'pending' ? 'Menunggu' : claim.status === 'rejected' ? 'Dibatalkan' : 'Terverifikasi');
+    statusCell.className = `admin-status ${statusClass}`;
     [
       new Date(claim.claimed_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }),
       claim.customer_name,
-      claim.promo_title
+      claim.promo_title,
+      claim.claim_code || '—'
     ].forEach(value => row.append(setText(document.createElement('td'), value)));
+    row.append(statusCell);
     rows.append(row);
   });
 }
@@ -764,6 +816,40 @@ $('#redeemRewardForm').addEventListener('submit', async event => {
 });
 
 $('#rewardType').addEventListener('change', updateRewardDiscountField);
+
+$('#verifyForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const error = $('#verifyError');
+  const button = $('#verifyForm button[type="submit"]');
+  const resultBox = $('#verifyResult');
+  button.disabled = true;
+  error.textContent = '';
+  try {
+    const result = await adminRequest('/api/admin/claims/verify', {
+      method: 'POST',
+      body: JSON.stringify({ code: $('#verifyCode').value })
+    });
+    resultBox.replaceChildren();
+    const title = setText(document.createElement('strong'), 'Klaim terverifikasi');
+    const detail = setText(document.createElement('p'),
+      `${result.customer_name} · ${result.promo_title} · Kode ${result.claim_code} · ${new Date(result.verified_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}`
+    );
+    resultBox.append(title, detail);
+    resultBox.classList.remove('hidden');
+    $('#verifyCode').value = '';
+    await loadDashboard();
+  } catch (requestError) {
+    error.textContent = requestError.message;
+    resultBox.classList.add('hidden');
+  } finally {
+    button.disabled = false;
+  }
+});
+$('#promoImage').addEventListener('change', event => readPromoImageFile(event.target.files[0]));
+$('#removePromoImage').addEventListener('click', () => {
+  setPromoImage('');
+  $('#promoImage').value = '';
+});
 $('#promoForm').addEventListener('submit', async event => {
   event.preventDefault();
   const error = $('#promoFormError');
@@ -777,7 +863,9 @@ $('#promoForm').addEventListener('submit', async event => {
     price_old: $('#promoPriceOld').value,
     price_new: $('#promoPriceNew').value,
     starts_on: $('#promoStartsOn').value,
-    ends_on: $('#promoEndsOn').value
+    ends_on: $('#promoEndsOn').value,
+    max_claims: Number($('#promoMaxClaims').value || 0),
+    image_url: $('#promoImageUrl').value
   };
   button.disabled = true;
   error.textContent = '';

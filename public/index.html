@@ -263,6 +263,19 @@
   </div>
 </div>
 
+<div class="claim-code-modal hidden" id="claimCodeModal" role="dialog" aria-modal="true" aria-labelledby="claimCodeTitle">
+  <div class="claim-code-modal-inner">
+    <h4 id="claimCodeTitle">Kode klaim berhasil dibuat</h4>
+    <p id="claimCodePromoTitle"></p>
+    <div class="claim-code-box">
+      <strong id="claimCodeValue"></strong>
+      <button class="btn btn-ghost" id="copyClaimCode" type="button">Salin</button>
+    </div>
+    <p class="claim-code-note" id="claimCodeNote">Tunjukkan kode ini kepada kasir/barista. Berlaku selama promo aktif.</p>
+    <button class="btn btn-primary" id="closeClaimCodeModal" type="button">Tutup</button>
+  </div>
+</div>
+
 <div id="toast"></div>
 <script src="customer-api.js"></script>
 <script src="script.js"></script>
@@ -287,6 +300,17 @@
       error.textContent = result.message;
     } catch (requestError) {
       error.textContent = requestError.message;
+    }
+  });
+  document.getElementById('closeClaimCodeModal').addEventListener('click', () => {
+    document.getElementById('claimCodeModal').classList.add('hidden');
+  });
+  document.getElementById('copyClaimCode').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(document.getElementById('claimCodeValue').textContent);
+      toast('Kode klaim disalin.', 'success');
+    } catch {
+      toast('Gagal menyalin kode.', 'error');
     }
   });
 </script>

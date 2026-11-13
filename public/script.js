@@ -68,13 +68,54 @@ function bindPromoClaims() {
   $$('.claim-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       if (getUser()) {
-        toast('Mengalihkan ke kartu member...', 'success');
-        setTimeout(() => { window.location.href = 'akun.html'; }, 500);
+        claimPromoCode(btn.closest('.promo-card'));
       } else {
         openPromoLogin();
       }
     });
   });
+}
+
+async function claimPromoCode(card) {
+  const promoId = Number(card?.dataset.promoId);
+  if (!promoId) {
+    window.location.href = 'akun.html';
+    return;
+  }
+  try {
+    const response = await fetch('/api/customer/promos/claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ promo_id: promoId })
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      if (result.existing_code) {
+        showClaimCodeModal(result.promo_title || card.querySelector('h3')?.textContent || 'Promo', result.existing_code, 'Kamu sudah punya kode aktif untuk promo ini.');
+        return;
+      }
+      if (response.status === 401) {
+        localStorage.removeItem(STORE_KEY);
+        localStorage.removeItem(LEGACY_STORE_KEY);
+        openPromoLogin();
+        return;
+      }
+      throw new Error(result.error || 'Kode klaim gagal dibuat.');
+    }
+    showClaimCodeModal(result.promo_title, result.claim_code);
+  } catch (error) {
+    toast(error.message, 'error');
+  }
+}
+
+function showClaimCodeModal(promoTitle, code, note) {
+  const modal = $('#claimCodeModal');
+  if (!modal) return;
+  $('#claimCodePromoTitle').textContent = promoTitle || '';
+  $('#claimCodeValue').textContent = code;
+  $('#claimCodeNote').replaceChildren(document.createTextNode(note || 'Tunjukkan kode ini kepada kasir/barista. Berlaku selama promo aktif.'));
+  modal.classList.remove('hidden');
 }
 
 function openPromoLogin() {
@@ -86,6 +127,16 @@ function openPromoLogin() {
 function buildPromoCard(promo) {
   const card = document.createElement('div');
   card.className = 'promo-card reveal in';
+  card.dataset.promoId = promo.id;
+
+  if (promo.image_url) {
+    const image = document.createElement('img');
+    image.className = 'promo-card-image';
+    image.src = promo.image_url;
+    image.alt = promo.title;
+    image.loading = 'lazy';
+    card.append(image);
+  }
 
   const badge = document.createElement('div');
   badge.className = `badge${promo.category === 'bundling' ? ' gold' : ''}`;

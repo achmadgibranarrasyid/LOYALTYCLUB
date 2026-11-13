@@ -163,6 +163,7 @@ section.block{padding:clamp(60px,8vw,104px) 0}
 .price-old{font-size:13px;color:var(--muted);text-decoration:line-through}
 .price-new{font-size:20px;font-weight:800;color:var(--accent-dark)}
 .promo-card .btn{width:100%;margin-top:auto}
+.promo-card-image{width:calc(100% + 48px);margin:-24px -24px 16px;height:170px;object-fit:cover;border-radius:calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0}
 
 .cta-band{background:linear-gradient(150deg,#29491f,#36592B 60%,#1E3717);border-radius:28px;padding:clamp(40px,6vw,64px);text-align:center;color:#fff;position:relative;overflow:hidden}
 .cta-band h2{font-size:clamp(28px,3.6vw,40px);margin-bottom:14px;position:relative;z-index:1}
@@ -530,10 +531,31 @@ footer{border-top:1px solid var(--line);padding:48px 0 36px;margin-top:auto}
 .admin-promo-list{display:grid;gap:12px}
 .admin-promo-item{display:flex;justify-content:space-between;gap:16px;padding:17px;border:1px solid var(--line);border-radius:15px}
 .admin-promo-item strong{display:block;margin-bottom:4px}
+.admin-promo-thumb{width:96px;height:64px;object-fit:cover;border-radius:9px;border:1px solid var(--line);margin-top:8px}
+.admin-image-preview{margin-top:10px}
+.admin-image-preview img{display:block;width:100%;max-height:170px;object-fit:cover;border-radius:12px;border:1px solid var(--line);margin-bottom:8px}
 .admin-promo-item p{font-size:13px;color:var(--muted);margin:3px 0}
 .admin-promo-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;align-content:flex-start;gap:6px;min-width:120px}
 .admin-promo-actions .btn{font-size:12px;padding:8px 12px;min-height:36px}
 .admin-status{display:inline-block;margin-top:7px;padding:3px 9px;border-radius:999px;background:#FCE1D3;color:var(--danger);font-size:11px;font-weight:800}
+.admin-status.is-active{background:#E3EFDC;color:#29491f}
+.admin-status.is-pending{background:#FFF3D6;color:#8a6d1a}
+.admin-status.is-rejected{background:#FCE1D3;color:var(--danger)}
+.admin-inline-form{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.admin-inline-form>div{min-width:220px;flex:0 1 260px}
+.verify-result{margin-top:12px;padding:14px 16px;border:1px solid var(--line);border-left:4px solid #29491f;border-radius:12px;background:var(--surface)}
+.verify-result strong{display:block;margin-bottom:4px}
+.claim-code-box{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;padding:12px 14px;border:2px dashed var(--gold);border-radius:12px;background:#FFFBEE}
+.claim-code-box strong{font-size:20px;letter-spacing:.08em;font-family:'Plus Jakarta Sans',sans-serif}
+.claim-code-modal{position:fixed;inset:0;z-index:120;display:flex;align-items:center;justify-content:center;background:rgba(20,28,18,.55);padding:20px}
+.claim-code-modal.hidden{display:none}
+.claim-code-modal-inner{background:#fff;border-radius:18px;padding:26px;max-width:380px;width:100%;text-align:center}
+.claim-code-modal-inner h4{font-size:19px;margin-bottom:6px}
+.claim-code-modal-inner p{font-size:14px;color:var(--muted);margin-bottom:14px}
+.claim-code-note{font-size:12.5px !important;margin-top:12px !important}
+.claim-code-btn{margin-top:6px;font-size:12.5px;padding:7px 12px;min-height:34px}
+#myClaimCodes li,#memberPromos li{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+#myClaimCodes strong{letter-spacing:.06em;font-family:'Plus Jakarta Sans',sans-serif}
 .admin-status.is-active{background:#E7EDCE;color:var(--green)}
 .admin-promo-form{position:sticky;top:88px}
 .admin-promo-form h3{font-size:21px;margin-bottom:7px}
