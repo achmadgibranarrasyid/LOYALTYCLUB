@@ -544,6 +544,7 @@ footer{border-top:1px solid var(--line);padding:48px 0 36px;margin-top:auto}
 .admin-promo-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;align-content:flex-start;gap:6px;min-width:120px}
 .admin-promo-actions .btn{font-size:12px;padding:8px 12px;min-height:36px}
 .admin-status{display:inline-block;margin-top:7px;padding:3px 9px;border-radius:999px;background:#FCE1D3;color:var(--danger);font-size:11px;font-weight:800}
+.claim-remove-btn{margin-top:6px;font-size:11px;padding:5px 10px;min-height:28px}
 .admin-status.is-active{background:#E3EFDC;color:#29491f}
 .admin-status.is-pending{background:#FFF3D6;color:#8a6d1a}
 .admin-status.is-rejected{background:#FCE1D3;color:var(--danger)}

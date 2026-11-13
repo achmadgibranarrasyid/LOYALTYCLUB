@@ -220,8 +220,8 @@
         result.promo_title,
         result.claim_code,
         result.amount_due
-          ? `Tunjukkan kode ini kepada kasir/barista. Jumlah yang harus dibayar: Rp${Number(result.amount_due).toLocaleString('id-ID')}.`
-          : undefined
+          ? `Tunjukkan kode ini kepada kasir/barista. Berlaku 15 menit. Jumlah yang harus dibayar: Rp${Number(result.amount_due).toLocaleString('id-ID')}.`
+          : 'Tunjukkan kode ini kepada kasir/barista. Berlaku 15 menit.'
       );
       await loadMyClaims();
     } catch (error) {
@@ -250,11 +250,16 @@
       claims.forEach(claim => {
         const item = document.createElement('li');
         const label = document.createElement('span');
-        const statusText = claim.status === 'pending' ? 'Menunggu verifikasi' : claim.status === 'rejected' ? 'Dibatalkan' : 'Terverifikasi';
-        const amountText = claim.amount_due !== null && claim.amount_due !== undefined && claim.amount_due !== '' && claim.status !== 'rejected'
+        const statusText = claim.status === 'pending' ? 'Menunggu verifikasi' : claim.status === 'rejected' ? 'Dibatalkan' : claim.status === 'expired' ? 'Kedaluwarsa' : 'Terverifikasi';
+        let timeText = '';
+        if (claim.status === 'pending' && claim.expires_at) {
+          const remainingMs = Number(claim.expires_at) - Date.now();
+          timeText = remainingMs > 0 ? ` · Sisa ${Math.max(1, Math.ceil(remainingMs / 60000))} mnt` : '';
+        }
+        const amountText = claim.amount_due !== null && claim.amount_due !== undefined && claim.amount_due !== '' && claim.status !== 'rejected' && claim.status !== 'expired'
           ? ` · Bayar: Rp${Number(claim.amount_due).toLocaleString('id-ID')}`
           : '';
-        label.textContent = `${claim.promo_title} · ${statusText}${amountText} · ${new Date(claim.claimed_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}`;
+        label.textContent = `${claim.promo_title} · ${statusText}${amountText}${timeText} · ${new Date(claim.claimed_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}`;
         const code = document.createElement('strong');
         code.textContent = claim.claim_code || '—';
         item.append(label, code);

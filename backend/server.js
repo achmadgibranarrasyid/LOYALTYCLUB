@@ -174,7 +174,8 @@ async function initializeDatabase(client) {
       claim_code TEXT,
       status TEXT NOT NULL DEFAULT 'verified',
       verified_at INTEGER,
-      amount_due INTEGER
+      amount_due INTEGER,
+      expires_at INTEGER
     )`,
     `CREATE TABLE IF NOT EXISTS loyalty_transactions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -284,6 +285,7 @@ async function initializeDatabase(client) {
     ["status", "TEXT NOT NULL DEFAULT 'verified'"],
     ["verified_at", "INTEGER"],
     ["amount_due", "INTEGER"],
+    ["expires_at", "INTEGER"],
   ]) {
     if (!existingClaimColumns.has(column)) {
       try {
@@ -967,6 +969,17 @@ async function getCustomerLoyalty(client, memberId) {
 
 const CLAIM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
+// Kode klaim yang belum diverifikasi kasir kedaluwarsa setelah 15 menit.
+const CLAIM_PENDING_TTL_MS = 15 * 60 * 1000;
+
+async function expireStalePendingClaims(client) {
+  await client.execute(
+    `UPDATE promo_claims SET status = 'expired'
+     WHERE status = 'pending' AND COALESCE(expires_at, claimed_at + ${CLAIM_PENDING_TTL_MS}) < ?`,
+    [nowMs()],
+  );
+}
+
 function generateClaimCode() {
   const bytes = crypto.randomBytes(8);
   let code = "";
@@ -987,13 +1000,14 @@ function todayDateString() {
 
 async function countActiveClaims(client, promoId) {
   const result = await client.execute(
-    "SELECT COUNT(*) AS count FROM promo_claims WHERE promo_id = ? AND status != 'rejected'",
+    "SELECT COUNT(*) AS count FROM promo_claims WHERE promo_id = ? AND status NOT IN ('rejected', 'expired')",
     [promoId],
   );
   return Number(result.rows[0].count);
 }
 
 async function claimCustomerPromo(client, memberId, customerName, promoId) {
+  await expireStalePendingClaims(client);
   if (!Number.isSafeInteger(promoId) || promoId <= 0) {
     throw Object.assign(new Error("Promo tidak valid."), { status: 400 });
   }
@@ -1020,12 +1034,13 @@ async function claimCustomerPromo(client, memberId, customerName, promoId) {
     const code = generateClaimCode();
     try {
       const claimedAt = nowMs();
+      const expiresAt = claimedAt + CLAIM_PENDING_TTL_MS;
       const amountDue = parsePriceToAmount(promo.price_new) ?? parsePriceToAmount(promo.price_old);
       const inserted = await client.execute({
         sql: `INSERT INTO promo_claims
-              (promo_id, promo_title, member_id, customer_name, claimed_at, claim_code, status, amount_due)
-              VALUES (?, ?, ?, ?, ?, ?, 'pending', ?) RETURNING *`,
-        args: [promo.id, promo.title, memberId, customerName, claimedAt, code, amountDue],
+              (promo_id, promo_title, member_id, customer_name, claimed_at, claim_code, status, amount_due, expires_at)
+              VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?) RETURNING *`,
+        args: [promo.id, promo.title, memberId, customerName, claimedAt, code, amountDue, expiresAt],
       });
       return { promo, claim: inserted.rows[0] };
     } catch (error) {
@@ -1036,6 +1051,7 @@ async function claimCustomerPromo(client, memberId, customerName, promoId) {
 }
 
 async function verifyClaimCode(client, rawCode) {
+  await expireStalePendingClaims(client);
   const code = typeof rawCode === "string" ? rawCode.trim().toUpperCase() : "";
   if (!/^MONT-[A-HJ-NP-Z2-9]{8}$/.test(code)) {
     throw Object.assign(new Error("Format kode klaim tidak valid."), { status: 400 });
@@ -1046,7 +1062,7 @@ async function verifyClaimCode(client, rawCode) {
   });
   const claim = claimResult.rows[0];
   if (!claim) {
-    throw Object.assign(new Error("Kode klaim tidak ditemukan, sudah digunakan, atau dibatalkan."), { status: 404 });
+    throw Object.assign(new Error("Kode klaim tidak ditemukan, sudah digunakan, kedaluwarsa, atau dibatalkan."), { status: 404 });
   }
   const promoResult = await client.execute("SELECT * FROM promos WHERE id = ?", [claim.promo_id]);
   const promo = promoResult.rows[0];
@@ -1069,12 +1085,12 @@ async function verifyClaimCode(client, rawCode) {
     args: [verifiedAt, amountDue, claim.id],
   });
   if (updated.rows.length === 0) {
-    throw Object.assign(new Error("Kode klaim tidak ditemukan, sudah digunakan, atau dibatalkan."), { status: 404 });
+    throw Object.assign(new Error("Kode klaim tidak ditemukan, sudah digunakan, kedaluwarsa, atau dibatalkan."), { status: 404 });
   }
   return { claim: updated.rows[0], promo };
 }
 
-const ANALYTICS_ACTIVE_CLAIMS = "status != 'rejected'";
+const ANALYTICS_ACTIVE_CLAIMS = "status NOT IN ('rejected', 'expired')";
 
 async function getAnalytics(client) {
   const start = new Date();
@@ -1239,6 +1255,7 @@ async function claimCustomerPromoHandler(client, req, res) {
       claim_code: result.claim.claim_code,
       claimed_at: result.claim.claimed_at,
       amount_due: result.claim.amount_due ?? null,
+      expires_at: result.claim.expires_at ?? null,
     });
   } catch (error) {
     if (error.existing_code) {
@@ -1251,8 +1268,9 @@ async function claimCustomerPromoHandler(client, req, res) {
 async function listCustomerClaims(client, req, res) {
   const session = await requireSession(client, req, res, "customer");
   if (!session) return;
+  await expireStalePendingClaims(client);
   const result = await client.execute({
-    sql: "SELECT id, promo_id, promo_title, claimed_at, claim_code, status, verified_at, amount_due FROM promo_claims WHERE member_id = ? ORDER BY claimed_at DESC LIMIT 50",
+    sql: "SELECT id, promo_id, promo_title, claimed_at, claim_code, status, verified_at, amount_due, expires_at FROM promo_claims WHERE member_id = ? ORDER BY claimed_at DESC LIMIT 50",
     args: [session.member_id],
   });
   return sendJson(res, 200, result.rows);
@@ -1387,8 +1405,9 @@ async function handleAdminGet(client, req, res, pathname, query) {
     return sendJson(res, 200, transactions.rows);
   }
   if (pathname === "/api/admin/claims") {
+    await expireStalePendingClaims(client);
     const claims = await client.execute(
-      `SELECT id, promo_id, promo_title, customer_name, claimed_at, claim_code, status, verified_at, amount_due
+      `SELECT id, promo_id, promo_title, customer_name, claimed_at, claim_code, status, verified_at, amount_due, expires_at
        FROM promo_claims ORDER BY claimed_at DESC LIMIT 500`,
     );
     return sendJson(res, 200, claims.rows);
@@ -1598,6 +1617,7 @@ async function handleApi(client, req, res) {
     const promoMatch = pathname.match(/^\/api\/admin\/promos\/(\d+)$/);
     const activeMatch = pathname.match(/^\/api\/admin\/promos\/(\d+)\/active$/);
     const rewardMatch = pathname.match(/^\/api\/admin\/rewards\/(\d+)$/);
+    const claimMatch = pathname.match(/^\/api\/admin\/claims\/(\d+)$/);
     const rewardActiveMatch = pathname.match(/^\/api\/admin\/rewards\/(\d+)\/active$/);
     if (methodIsAdminRead) {
       const session = await requireSession(client, req, res, "admin");
@@ -1647,6 +1667,18 @@ async function handleApi(client, req, res) {
       if (!session) return;
       const result = await client.execute("DELETE FROM promos WHERE id = ?", [Number(promoMatch[1])]);
       if (Number(result.rowsAffected) === 0) return sendError(res, 404, "Promo tidak ditemukan.");
+      return sendJson(res, 200, { ok: true });
+    }
+    if (method === "DELETE" && claimMatch) {
+      const session = await requireSession(client, req, res, "admin", true);
+      if (!session) return;
+      const existing = await client.execute("SELECT status FROM promo_claims WHERE id = ?", [Number(claimMatch[1])]);
+      const claim = existing.rows[0];
+      if (!claim) return sendError(res, 404, "Klaim tidak ditemukan.");
+      if (claim.status === "verified") {
+        return sendError(res, 400, "Klaim yang sudah terverifikasi tidak dapat dihapus.");
+      }
+      await client.execute("DELETE FROM promo_claims WHERE id = ?", [Number(claimMatch[1])]);
       return sendJson(res, 200, { ok: true });
     }
     if (method === "DELETE" && rewardMatch) {

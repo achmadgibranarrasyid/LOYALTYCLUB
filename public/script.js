@@ -107,8 +107,8 @@ async function claimPromoCode(card) {
       result.promo_title,
       result.claim_code,
       result.amount_due
-        ? `Tunjukkan kode ini kepada kasir/barista. Jumlah yang harus dibayar: Rp${Number(result.amount_due).toLocaleString('id-ID')}.`
-        : undefined
+        ? `Tunjukkan kode ini kepada kasir/barista. Berlaku 15 menit. Jumlah yang harus dibayar: Rp${Number(result.amount_due).toLocaleString('id-ID')}.`
+        : 'Tunjukkan kode ini kepada kasir/barista. Berlaku 15 menit.'
     );
   } catch (error) {
     toast(error.message, 'error');

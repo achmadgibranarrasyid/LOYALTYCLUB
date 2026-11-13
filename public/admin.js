@@ -504,15 +504,35 @@ function renderClaims(claims) {
   }
   claims.forEach(claim => {
     const row = document.createElement('tr');
-    const statusClass = claim.status === 'pending' ? 'is-pending' : claim.status === 'rejected' ? 'is-rejected' : 'is-active';
-    const statusCell = setText(document.createElement('td'), claim.status === 'pending' ? 'Menunggu' : claim.status === 'rejected' ? 'Dibatalkan' : 'Terverifikasi');
-    statusCell.className = `admin-status ${statusClass}`;
+    const statusClass = claim.status === 'pending' ? 'is-pending' : claim.status === 'rejected' || claim.status === 'expired' ? 'is-rejected' : 'is-active';
+    const statusText = claim.status === 'pending' ? 'Menunggu' : claim.status === 'rejected' ? 'Dibatalkan' : claim.status === 'expired' ? 'Kedaluwarsa' : 'Terverifikasi';
+    const statusCell = document.createElement('td');
+    const statusBadge = setText(document.createElement('span'), statusText);
+    statusBadge.className = `admin-status ${statusClass}`;
+    statusCell.append(statusBadge);
+    if (claim.status === 'pending' || claim.status === 'expired') {
+      const removeBtn = setText(document.createElement('button'), 'Hapus');
+      removeBtn.type = 'button';
+      removeBtn.className = 'btn btn-ghost danger claim-remove-btn';
+      removeBtn.addEventListener('click', async () => {
+        const allowed = await askDeleteConfirmation(`Hapus kode ${claim.claim_code || 'klaim'} milik ${claim.customer_name}?`);
+        if (!allowed) return;
+        try {
+          await adminRequest(`/api/admin/claims/${claim.id}`, { method: 'DELETE' });
+          notifyAdmin('Kode klaim dihapus.');
+          await loadDashboard();
+        } catch (error) {
+          notifyAdmin(error.message, 'error');
+        }
+      });
+      statusCell.append(removeBtn);
+    }
     [
       new Date(claim.claimed_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }),
       claim.customer_name,
       claim.promo_title,
       claim.claim_code || '—',
-      claim.status === 'rejected' ? '—' : formatAmount(claim.amount_due)
+      claim.status === 'rejected' || claim.status === 'expired' ? '—' : formatAmount(claim.amount_due)
     ].forEach(value => row.append(setText(document.createElement('td'), value)));
     row.append(statusCell);
     rows.append(row);
