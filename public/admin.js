@@ -12,6 +12,22 @@ function notifyAdmin(message, type = 'success') {
   adminToastTimer = setTimeout(() => { toast.className = ''; }, 3000);
 }
 
+let confirmResolver = null;
+
+function askDeleteConfirmation(message) {
+  $('#confirmMessage').textContent = message;
+  $('#confirmOverlay').classList.remove('hidden');
+  return new Promise(resolve => { confirmResolver = resolve; });
+}
+
+function settleConfirmation(answer) {
+  $('#confirmOverlay').classList.add('hidden');
+  if (confirmResolver) {
+    confirmResolver(answer);
+    confirmResolver = null;
+  }
+}
+
 async function adminRequest(url, options = {}) {
   const response = await fetch(url, {
     ...options,
@@ -209,9 +225,11 @@ function renderPromos(promos) {
         }
       }),
       createAdminButton('Hapus', 'btn btn-ghost danger', async () => {
-        if (!window.confirm(`Hapus promo "${promo.title}"?`)) return;
+        const allowed = await askDeleteConfirmation(`Hapus promo "${promo.title}" secara permanen?`);
+        if (!allowed) return;
         try {
           await adminRequest(`/api/admin/promos/${promo.id}`, { method: 'DELETE' });
+          notifyAdmin(`Promo "${promo.title}" dihapus.`);
           resetPromoForm();
           await loadDashboard();
           $('#promoError').textContent = '';
@@ -428,9 +446,11 @@ function renderRewards(rewards) {
         }
       }),
       createAdminButton('Hapus', 'btn btn-ghost danger', async () => {
-        if (!window.confirm(`Hapus reward "${reward.name}"?`)) return;
+        const allowed = await askDeleteConfirmation(`Hapus reward "${reward.name}" secara permanen?`);
+        if (!allowed) return;
         try {
           await adminRequest(`/api/admin/rewards/${reward.id}`, { method: 'DELETE' });
+          notifyAdmin(`Reward "${reward.name}" dihapus.`);
           resetRewardForm();
           await loadDashboard();
           $('#rewardError').textContent = '';
@@ -961,6 +981,15 @@ $('#adminLogout').addEventListener('click', async () => {
   } catch (error) {
     $('#adminLoginError').textContent = error.message;
   }
+});
+
+$('#confirmOk').addEventListener('click', () => settleConfirmation(true));
+$('#confirmCancel').addEventListener('click', () => settleConfirmation(false));
+$('#confirmOverlay').addEventListener('click', event => {
+  if (event.target === $('#confirmOverlay')) settleConfirmation(false);
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && !$('#confirmOverlay').classList.contains('hidden')) settleConfirmation(false);
 });
 
 adminRequest('/api/admin/session')

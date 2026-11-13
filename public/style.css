@@ -153,7 +153,7 @@ section.block{padding:clamp(60px,8vw,104px) 0}
 .sec-head h2{font-size:clamp(30px,3.8vw,42px);margin-bottom:14px}
 .sec-head p{color:var(--muted);font-size:16px}
 .promo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
-.promo-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:24px;display:flex;flex-direction:column;transition:.3s;position:relative}
+.promo-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:24px;display:flex;flex-direction:column;transition:.3s;position:relative;overflow:hidden}
 .promo-card:hover{transform:translateY(-6px);box-shadow:var(--shadow);border-color:transparent}
 .promo-card .badge{align-self:flex-start;background:var(--accent-dark);color:#fff;font-size:11px;font-weight:800;padding:5px 12px;border-radius:999px;margin-bottom:14px;letter-spacing:.06em}
 .promo-card .badge.gold{background:var(--gold);color:var(--ink)}
@@ -163,7 +163,7 @@ section.block{padding:clamp(60px,8vw,104px) 0}
 .price-old{font-size:13px;color:var(--muted);text-decoration:line-through}
 .price-new{font-size:20px;font-weight:800;color:var(--accent-dark)}
 .promo-card .btn{width:100%;margin-top:auto}
-.promo-card-image{width:calc(100% + 48px);margin:-24px -24px 16px;height:170px;object-fit:cover;border-radius:calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0}
+.promo-card-image{display:block;width:calc(100% + 48px);max-width:none;margin:-24px -24px 18px;height:190px;object-fit:cover;border-radius:0;background:var(--gold)}
 
 .cta-band{background:linear-gradient(150deg,#29491f,#36592B 60%,#1E3717);border-radius:28px;padding:clamp(40px,6vw,64px);text-align:center;color:#fff;position:relative;overflow:hidden}
 .cta-band h2{font-size:clamp(28px,3.6vw,40px);margin-bottom:14px;position:relative;z-index:1}
@@ -351,6 +351,17 @@ footer{border-top:1px solid var(--line);padding:48px 0 36px;margin-top:auto}
 #toast.show{opacity:1;visibility:visible;transform:translate(-50%,0)}
 #toast.success{background:var(--green)}
 #toast.error{background:var(--danger)}
+
+/* dialog konfirmasi hapus (admin) */
+.confirm-overlay{position:fixed;inset:0;z-index:400;display:flex;align-items:center;justify-content:center;background:rgba(41,73,31,.45);padding:20px}
+.confirm-overlay.hidden{display:none}
+.confirm-box{background:var(--surface);border-radius:18px;padding:26px;max-width:360px;width:100%;box-shadow:var(--shadow)}
+.confirm-box h4{font-size:18px;margin-bottom:8px;font-family:'Plus Jakarta Sans',sans-serif}
+.confirm-box p{font-size:14px;color:var(--muted);margin-bottom:20px;overflow-wrap:anywhere}
+.confirm-actions{display:flex;justify-content:flex-end;gap:10px}
+.confirm-actions .btn{min-height:40px}
+.btn.danger{background:var(--danger);color:#fff;border-color:var(--danger)}
+.btn.danger:hover{opacity:.85}
 
 /* reveal */
 .reveal{opacity:0;transform:translateY(24px);transition:.7s cubic-bezier(.4,0,.2,1)}
