@@ -175,8 +175,6 @@ async function initializeDatabase(client) {
       status TEXT NOT NULL DEFAULT 'verified',
       verified_at INTEGER
     )`,
-    "CREATE INDEX IF NOT EXISTS promo_claims_code ON promo_claims (claim_code)",
-    "CREATE INDEX IF NOT EXISTS promo_claims_promo_status ON promo_claims (promo_id, status)",
     `CREATE TABLE IF NOT EXISTS loyalty_transactions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       member_id TEXT NOT NULL,
@@ -294,6 +292,7 @@ async function initializeDatabase(client) {
     }
   }
   await client.execute("CREATE INDEX IF NOT EXISTS promo_claims_code ON promo_claims (claim_code)");
+  await client.execute("CREATE INDEX IF NOT EXISTS promo_claims_promo_status ON promo_claims (promo_id, status)");
   const tierColumns = await client.execute("PRAGMA table_info(loyalty_tiers)");
   if (!tierColumns.rows.some((row) => row.name === "min_spend")) {
     await client.execute("ALTER TABLE loyalty_tiers ADD COLUMN min_spend INTEGER NOT NULL DEFAULT 0");
