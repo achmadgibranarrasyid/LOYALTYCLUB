@@ -103,7 +103,13 @@ async function claimPromoCode(card) {
       }
       throw new Error(result.error || 'Kode klaim gagal dibuat.');
     }
-    showClaimCodeModal(result.promo_title, result.claim_code);
+    showClaimCodeModal(
+      result.promo_title,
+      result.claim_code,
+      result.amount_due
+        ? `Tunjukkan kode ini kepada kasir/barista. Jumlah yang harus dibayar: Rp${Number(result.amount_due).toLocaleString('id-ID')}.`
+        : undefined
+    );
   } catch (error) {
     toast(error.message, 'error');
   }

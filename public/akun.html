@@ -216,7 +216,13 @@
         }
         throw new Error(result.error || 'Kode klaim gagal dibuat.');
       }
-      showClaimCodeModal(result.promo_title, result.claim_code);
+      showClaimCodeModal(
+        result.promo_title,
+        result.claim_code,
+        result.amount_due
+          ? `Tunjukkan kode ini kepada kasir/barista. Jumlah yang harus dibayar: Rp${Number(result.amount_due).toLocaleString('id-ID')}.`
+          : undefined
+      );
       await loadMyClaims();
     } catch (error) {
       toast(error.message, 'error');
@@ -244,7 +250,11 @@
       claims.forEach(claim => {
         const item = document.createElement('li');
         const label = document.createElement('span');
-        label.textContent = `${claim.promo_title} · ${claim.status === 'pending' ? 'Menunggu verifikasi' : claim.status === 'rejected' ? 'Dibatalkan' : 'Terverifikasi'} · ${new Date(claim.claimed_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}`;
+        const statusText = claim.status === 'pending' ? 'Menunggu verifikasi' : claim.status === 'rejected' ? 'Dibatalkan' : 'Terverifikasi';
+        const amountText = claim.amount_due !== null && claim.amount_due !== undefined && claim.amount_due !== '' && claim.status !== 'rejected'
+          ? ` · Bayar: Rp${Number(claim.amount_due).toLocaleString('id-ID')}`
+          : '';
+        label.textContent = `${claim.promo_title} · ${statusText}${amountText} · ${new Date(claim.claimed_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}`;
         const code = document.createElement('strong');
         code.textContent = claim.claim_code || '—';
         item.append(label, code);

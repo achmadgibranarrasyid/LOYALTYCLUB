@@ -491,10 +491,13 @@ function renderTiers(tiers) {
 function renderClaims(claims) {
   const rows = $('#claimRows');
   rows.replaceChildren();
+  const formatAmount = value => Number.isFinite(Number(value)) && value !== null && value !== ''
+    ? `Rp${Number(value).toLocaleString('id-ID')}`
+    : '—';
   if (!claims.length) {
     const row = document.createElement('tr');
     const cell = setText(document.createElement('td'), 'Belum ada klaim yang dicatat.');
-    cell.colSpan = 5;
+    cell.colSpan = 6;
     row.append(cell);
     rows.append(row);
     return;
@@ -508,7 +511,8 @@ function renderClaims(claims) {
       new Date(claim.claimed_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }),
       claim.customer_name,
       claim.promo_title,
-      claim.claim_code || '—'
+      claim.claim_code || '—',
+      claim.status === 'rejected' ? '—' : formatAmount(claim.amount_due)
     ].forEach(value => row.append(setText(document.createElement('td'), value)));
     row.append(statusCell);
     rows.append(row);
@@ -859,6 +863,15 @@ $('#verifyForm').addEventListener('submit', async event => {
       `${result.customer_name} · ${result.promo_title} · Kode ${result.claim_code} · ${new Date(result.verified_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}`
     );
     resultBox.append(title, detail);
+    const amountBox = document.createElement('div');
+    amountBox.className = 'amount-due-box';
+    const amountLabel = setText(document.createElement('small'), 'Jumlah yang harus dibayar');
+    const amountValue = document.createElement('strong');
+    amountValue.textContent = result.amount_due !== null && result.amount_due !== undefined && result.amount_due !== ''
+      ? `Rp${Number(result.amount_due).toLocaleString('id-ID')}`
+      : 'Sesuai pesanan di kasir';
+    amountBox.append(amountLabel, amountValue);
+    resultBox.append(amountBox);
     resultBox.classList.remove('hidden');
     $('#verifyCode').value = '';
     await loadDashboard();

@@ -173,7 +173,8 @@ async function initializeDatabase(client) {
       claimed_at INTEGER NOT NULL,
       claim_code TEXT,
       status TEXT NOT NULL DEFAULT 'verified',
-      verified_at INTEGER
+      verified_at INTEGER,
+      amount_due INTEGER
     )`,
     `CREATE TABLE IF NOT EXISTS loyalty_transactions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -282,6 +283,7 @@ async function initializeDatabase(client) {
     ["claim_code", "TEXT"],
     ["status", "TEXT NOT NULL DEFAULT 'verified'"],
     ["verified_at", "INTEGER"],
+    ["amount_due", "INTEGER"],
   ]) {
     if (!existingClaimColumns.has(column)) {
       try {
@@ -818,6 +820,13 @@ async function listPromos(client, activeOnly) {
   return result.rows;
 }
 
+function parsePriceToAmount(value) {
+  if (typeof value !== "string") return null;
+  const digits = value.replace(/[^\d]/g, "");
+  if (!digits) return null;
+  return Number(digits);
+}
+
 function validatePromoDate(value) {
   if (typeof value !== "string" || !value) return null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -1011,11 +1020,12 @@ async function claimCustomerPromo(client, memberId, customerName, promoId) {
     const code = generateClaimCode();
     try {
       const claimedAt = nowMs();
+      const amountDue = parsePriceToAmount(promo.price_new) ?? parsePriceToAmount(promo.price_old);
       const inserted = await client.execute({
         sql: `INSERT INTO promo_claims
-              (promo_id, promo_title, member_id, customer_name, claimed_at, claim_code, status)
-              VALUES (?, ?, ?, ?, ?, ?, 'pending') RETURNING *`,
-        args: [promo.id, promo.title, memberId, customerName, claimedAt, code],
+              (promo_id, promo_title, member_id, customer_name, claimed_at, claim_code, status, amount_due)
+              VALUES (?, ?, ?, ?, ?, ?, 'pending', ?) RETURNING *`,
+        args: [promo.id, promo.title, memberId, customerName, claimedAt, code, amountDue],
       });
       return { promo, claim: inserted.rows[0] };
     } catch (error) {
@@ -1053,9 +1063,10 @@ async function verifyClaimCode(client, rawCode) {
     }
   }
   const verifiedAt = nowMs();
+  const amountDue = parsePriceToAmount(promo.price_new) ?? parsePriceToAmount(promo.price_old);
   const updated = await client.execute({
-    sql: "UPDATE promo_claims SET status = 'verified', verified_at = ? WHERE id = ? AND status = 'pending' RETURNING *",
-    args: [verifiedAt, claim.id],
+    sql: "UPDATE promo_claims SET status = 'verified', verified_at = ?, amount_due = COALESCE(amount_due, ?) WHERE id = ? AND status = 'pending' RETURNING *",
+    args: [verifiedAt, amountDue, claim.id],
   });
   if (updated.rows.length === 0) {
     throw Object.assign(new Error("Kode klaim tidak ditemukan, sudah digunakan, atau dibatalkan."), { status: 404 });
@@ -1227,6 +1238,7 @@ async function claimCustomerPromoHandler(client, req, res) {
       promo_title: result.promo.title,
       claim_code: result.claim.claim_code,
       claimed_at: result.claim.claimed_at,
+      amount_due: result.claim.amount_due ?? null,
     });
   } catch (error) {
     if (error.existing_code) {
@@ -1240,7 +1252,7 @@ async function listCustomerClaims(client, req, res) {
   const session = await requireSession(client, req, res, "customer");
   if (!session) return;
   const result = await client.execute({
-    sql: "SELECT id, promo_id, promo_title, claimed_at, claim_code, status, verified_at FROM promo_claims WHERE member_id = ? ORDER BY claimed_at DESC LIMIT 50",
+    sql: "SELECT id, promo_id, promo_title, claimed_at, claim_code, status, verified_at, amount_due FROM promo_claims WHERE member_id = ? ORDER BY claimed_at DESC LIMIT 50",
     args: [session.member_id],
   });
   return sendJson(res, 200, result.rows);
@@ -1366,8 +1378,8 @@ async function handleAdminGet(client, req, res, pathname, query) {
   if (pathname === "/api/admin/rewards") return sendJson(res, 200, await listRewards(client));
   if (pathname === "/api/admin/points/transactions") {
     const transactions = await client.execute(
-      `SELECT customers.name AS customer_name, ledger.type, ledger.points_delta,
-              ledger.description, ledger.created_at
+      `SELECT customers.name AS customer_name, ledger.member_id, ledger.type, ledger.points_delta,
+              ledger.description, ledger.purchase_amount, ledger.created_at
        FROM loyalty_transactions AS ledger
        LEFT JOIN customers ON customers.member_id = ledger.member_id
        ORDER BY ledger.id DESC LIMIT 200`,
@@ -1376,7 +1388,7 @@ async function handleAdminGet(client, req, res, pathname, query) {
   }
   if (pathname === "/api/admin/claims") {
     const claims = await client.execute(
-      `SELECT id, promo_id, promo_title, customer_name, claimed_at, claim_code, status, verified_at
+      `SELECT id, promo_id, promo_title, customer_name, claimed_at, claim_code, status, verified_at, amount_due
        FROM promo_claims ORDER BY claimed_at DESC LIMIT 500`,
     );
     return sendJson(res, 200, claims.rows);
@@ -1464,6 +1476,18 @@ async function handleAdminPost(client, req, res, pathname) {
     const code = typeof payload.code === "string" ? payload.code : "";
     try {
       const result = await verifyClaimCode(client, code);
+      // Catat ke ledger loyalty pelanggan agar masuk ke data user
+      try {
+        await client.execute(pointsTransactionStatement(
+          result.claim.member_id,
+          0,
+          "promo_claim",
+          `Klaim promo "${result.promo.title}" (kode ${result.claim.claim_code})`,
+          { purchaseAmount: result.claim.amount_due ?? undefined },
+        ));
+      } catch (ledgerError) {
+        console.error("Gagal mencatat ledger klaim promo:", ledgerError.message);
+      }
       return sendJson(res, 200, {
         id: result.claim.id,
         claim_code: result.claim.claim_code,
@@ -1473,6 +1497,7 @@ async function handleAdminPost(client, req, res, pathname) {
         customer_name: result.claim.customer_name,
         claimed_at: result.claim.claimed_at,
         verified_at: result.claim.verified_at,
+        amount_due: result.claim.amount_due ?? null,
       });
     } catch (error) {
       return sendError(res, error.status || 500, error.message);
@@ -1499,11 +1524,12 @@ async function handleAdminPost(client, req, res, pathname) {
       return sendError(res, 409, "Kuota promo sudah habis.");
     }
     const claimedAt = nowMs();
+    const manualAmountDue = parsePriceToAmount(promo.price_new) ?? parsePriceToAmount(promo.price_old);
     const statements = [{
         sql: `INSERT INTO promo_claims
-              (promo_id, promo_title, member_id, customer_name, claimed_at, status)
-              VALUES (?, ?, ?, ?, ?, 'verified') RETURNING id`,
-        args: [promo.id, promo.title, customer.member_id, customer.name, claimedAt],
+              (promo_id, promo_title, member_id, customer_name, claimed_at, status, amount_due)
+              VALUES (?, ?, ?, ?, ?, 'verified', ?) RETURNING id`,
+        args: [promo.id, promo.title, customer.member_id, customer.name, claimedAt, manualAmountDue],
       }];
     const results = await client.batch(statements, "write");
     return sendJson(res, 201, {
